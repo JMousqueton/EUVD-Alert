@@ -350,7 +350,7 @@ def save_and_generate_html(vulns, vendor_line,title):
                         dom: 'Bfrtip',
                         buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
                         columnDefs: [
-                            {{ orderable: false, targets: -1 }}  // Disable sort on last column (radar)
+                           {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
                         ]
                         }});
                     }});
