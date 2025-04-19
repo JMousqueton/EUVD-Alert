@@ -215,7 +215,7 @@ def generate_summary_card(vulns):
             <span title="Low">{cvss_severity_icon(2)} {severity_counts['low']}</span> &nbsp;
             <span title="Unknown">{cvss_severity_icon(0)} {severity_counts['?']}</span>             
         </p>
-        <p class="card-text"><strong>Affected vendors:</strong><br> {', '.join(sorted(vendors))}</p>
+        <p class="card-text"><strong>Affected vendors:</strong><br> {vendor_line}</p>
       </div>
     </div>
     """
