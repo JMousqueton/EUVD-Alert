@@ -46,6 +46,8 @@ Emails are sent with HTML-formatted tables and include:
 
 Each vulnerability report includes a radar chart visualizing the CVSS vector components, offering a quick look at the severity profile.
 
+![Radar for EUVD-2025-11786](https://vuln.mousqueton.io/radars/EUVD-2025-11786.png "EUVD-2025-11786")
+
 ## 🕹️ Usage
 
 ```bash
