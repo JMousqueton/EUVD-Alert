@@ -1,20 +1,20 @@
 # EUVD-Alert
 
-**EUVD-Alert** est un outil de veille automatisée basé sur la base de données de vulnérabilités de l'ENISA (EUVD). Il récupère quotidiennement les vulnérabilités publiées, les filtre selon des mots-clés et des seuils de sévérité (CVSS), puis génère des alertes envoyées par e-mail.
+**EUVD-Alert** is an automated threat monitoring tool based on the ENISA Vulnerability Database (EUVD). It fetches newly published vulnerabilities daily, filters them using keywords and severity thresholds (CVSS), and generates alerts and reporting via email.
 
-## 🔍 Fonctionnalités
+## 🔍 Features
 
-- Récupération quotidienne des vulnérabilités depuis l’API ENISA EUVD
-- Filtrage par score CVSS (ex: alerte à partir de 8.0)
-- Détection basée sur des mots-clés (produits / éditeurs spécifiques)
-- Génération de rapports HTML (quotidien et par alerte)
-- Envoi automatique par e-mail
-- Génération de graphiques radar CVSS
-- Historisation des vulnérabilités traitées
+- Daily retrieval of vulnerabilities from the ENISA EUVD API
+- Filtering based on CVSS score (e.g., alert if score ≥ 8.0)
+- Vendor-based filtering
+- HTML report generation (daily summary and alert-specific)
+- Automated email delivery with formatted vulnerability tables
+- CVSS radar chart generation for visual severity analysis
+- Tracking of processed vulnerabilities to avoid duplicates
 
 ## ⚙️ Configuration
 
-Le fichier `.env` permet de configurer :
+All settings are managed via the `.env` file:
 
 ```dotenv
 VULN_FILE=euvd.json
@@ -26,61 +26,61 @@ RADAR_FOLDER=./web/radars
 DAILY_FOLDER=./web/daily
 RADAR_URL=https://vuln.mousqueton.io/radars
 DAILY_URL=https://vuln.mousqueton.io/daily
-MAIL_SMTP_SERVER=localhost
-MAIL_SMTP_PORT=25
-MAIL_FROM=Vulnerability report <no-reply@example.com>
-MAIL_TO=example@example.com
+MAIL_SERVER=smtp.example.com
+MAIL_PORT=465
+MAIL_USERNAME=you@example.com
+MAIL_PASSWORD=yourpassword
+MAIL_FROM=you@example.com
+MAIL_TO=alerts@example.com
+LOCK_FILE=/tmp/euvd.lock
 ```
 
-Le fichier `vendors.json` doit contenir la liste des **vendors** que vous souhaitez surveiller, par exemple :
+## 📬 Email Output
 
-```json
-[
-  "Cisco",
-  "Microsoft",
-  "Fortinet",
-  "Palo Alto Networks"
-]
-```
+Emails are sent with HTML-formatted tables and include:
 
-## 📁 Fichiers principaux
+- Alert mode: When critical CVEs are detected based on keywords and severity
+- Daily report: Summary of all vulnerabilities published on the day with a link to the website
 
-- `Get-EUVD.py` : télécharge les vulnérabilités depuis l’API ENISA
-- `AlerAndReport.py` : génère les rapports quotidiens, mensuels et envoie les alertes
-- `euvd.json` : base locale des vulnérabilités
-- `sent_ids_daily.json` & `sent_ids_alert.json` : suivi des vulnérabilités déjà envoyées
+## 📊 Radar Charts
 
-## 🚀 Utilisation
+Each vulnerability report includes a radar chart visualizing the CVSS vector components, offering a quick look at the severity profile.
 
-### Mise à jour des vulnérabilités :
-```bash
-python Get-EUVD.py
-```
-
-### Génération des rapports et envoi des alertes :
-```bash
-python AlertAndReport.py
-```
-
-## ✅ Dépendances
-
-- `requests`
-- `python-dotenv`
-- `matplotlib`
-- `numpy`
-- `smtplib` (librairie standard Python)
-
-Installez-les avec :
+## 🕹️ Usage
 
 ```bash
-pip install -r requirements.txt
+python3 euvd-alert.py --daily       # For daily report (vendors match)
+python3 euvd-alert.py --alert       # For alert mode (severity & vendors match)
+python3 euvd-alert.py --monthly     # Monthly vendors/CVSS matrix summary
 ```
 
-## 📬 Auteurs
+## 📁 Output Files
 
-Projet personnel de **Julien Mousqueton**    
-Source des vulnérabilités : [ENISA EUVD](https://euvd.enisa.europa.eu/)
+- HTML reports: stored in `./web/daily/YYYY-MM-DD.html`
+- Radar charts: stored in `./web/radars/`
+- Monthly reports: stored in `./web/monthly/YYYY-MM.html`
 
----
+## 📌 Requirements
 
-© 2025 Julien Mousqueton – All rights reserved.
+- Python 3.x
+- Libraries: `requests`, `jinja2`, `matplotlib`, `pandas`, `smtplib`, etc.
+- Cron setup for automation (recommended)
+- Webserver
+
+## 🚧 Roadmap
+
+- Optional Slack/Teams integration
+- Web dashboard for historical CVE tracking
+- Enhanced analytics and visualizations
+- Export options (PDF, CSV)
+
+## 👨‍💻 Author
+
+Julien Mousqueton  
+[LinkedIn](https://linkedin.com/in/julienmousqueton)  
+GitHub: [JMousqueton](https://github.com/JMousqueton)
+
+## 🛡 License
+
+This project is licensed under the GNU General Public License v3.0.
+See the `LICENSE` file for more details.
