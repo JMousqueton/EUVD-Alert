@@ -65,7 +65,7 @@ python3 euvd-alert.py --monthly     # Monthly vendors/CVSS matrix summary
 ## 📌 Requirements
 
 - Python 3.x
-- Libraries: `requests`, `jinja2`, `matplotlib`, `pandas`, `smtplib`, etc.
+- Libraries: `requests`, `fcntl`, `logging`, `pytz`, `smtplib`, etc.
 - Cron setup for automation (recommended)
 - Webserver
 
