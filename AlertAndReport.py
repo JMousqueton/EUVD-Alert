@@ -180,7 +180,7 @@ def generate_inline_noinfo_svg():
       </text>
     </svg>
     """
-def generate_summary_card(vulns):
+def generate_summary_card(vulns,vendor_line):
     severity_counts = {"?": 0, "low": 0, "medium": 0, "high": 0, "critical": 0}
     vendors = set()
     for v in vulns:
@@ -338,7 +338,7 @@ def save_and_generate_html(vulns, vendor_line,title):
                 <h2><i class="fa-regular fa-calendar-days"></i> {full_title}</h2>
                 <p>📄 <a href="{report_url}">View this report online</a></p>
                 <br>
-                {generate_summary_card(vulns)}
+                {generate_summary_card(vulns,vendor_line)}
                 <br>
                 <div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">
                     Page generated on {full_date}
