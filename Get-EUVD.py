@@ -100,7 +100,7 @@ while True:
             logger.debug(f"🌐 URL requested: {response.url}")
             logger.debug(f"📤 Headers: {response.request.headers}")
             logger.debug(f"📥 Status Code: {response.status_code}")
-            logger.debug(f"📦 Raw Response (first 500 chars): {response.text[:500]}")
+            logger.debug(f"📦 Raw Response (first 500 chars): {response.text[:500]}...")
 
         response.raise_for_status()
         api_response = response.json()

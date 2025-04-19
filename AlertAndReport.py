@@ -227,6 +227,7 @@ def save_and_generate_html(vulns, vendor_line,title):
     formatted_date = datetime.now().strftime("%B %d, %Y")
     full_title = f"{title} - {formatted_date}"
     rows = ""
+    nb_vulns = len(vulns)
     for v in vulns:
         generate_radar_chart(v.get("baseScoreVector", ""), v["id"])
         alt_id = v.get('aliases', '').strip()
@@ -274,6 +275,24 @@ def save_and_generate_html(vulns, vendor_line,title):
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
+                <!-- Open Graph Meta -->
+                <meta property="og:type" content="article">
+                <meta property="og:locale" content="en_US">
+                <meta property="og:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
+                <meta property="og:description" content="Daily breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
+                <meta property="og:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta property="og:image:width" content="1200">
+                <meta property="og:image:height" content="630">
+                <meta property="og:url" content="https://vuln.mousqueton.io/daily/{today}.html">
+                <meta property="og:site_name" content="Julien Mousqueton">
+                <meta property="og:logo" content="https://vuln.mousqueton.io/logo.png">
+
+                <!-- Twitter Card Meta -->
+                <meta name="twitter:card" content="summary_large_image">
+                <meta name="twitter:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
+                <meta name="twitter:description" content="{nb_vulns} new vulnerabilities across {vendor_line}..">
+                <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta name="twitter:site" content="Julien Mousqueton">
                 <title>{full_title}</title>
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -350,7 +369,7 @@ def save_and_generate_html(vulns, vendor_line,title):
                         dom: 'Bfrtip',
                         buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
                         columnDefs: [
-                           {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
+                            {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
                         ]
                         }});
                     }});
