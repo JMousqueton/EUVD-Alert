@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import pytz
 import logging
 import fcntl
+from collections import defaultdict
 
 # Setup logging
 logging.basicConfig(
@@ -158,7 +159,7 @@ def_html = """
 def remove_duplicates_preserve_order(seq):
     return list(dict.fromkeys(seq))
 
-def send_html_email(subject, html_content, dry_run=False, high_priority=False):
+def send_html_email(subject, html_content, dry_run=False, high_priority=False,type="Alert"):
     smtp_server = os.getenv("MAIL_SMTP_SERVER")
     smtp_port = int(os.getenv("MAIL_SMTP_PORT", 25))
     mail_from = os.getenv("MAIL_FROM")
@@ -171,11 +172,14 @@ def send_html_email(subject, html_content, dry_run=False, high_priority=False):
         return
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    if high_priority:
+    if type == "Alert":
         msg["From"] = "Urgent " + mail_from
-    else:
+    elif type == "Daily":
         msg["From"] = "Daily " + mail_from
-    #msg["To"] = mail_to
+    elif type == "Monthly":
+        msg["From"] = "Monthly " + mail_from
+    else:
+        msg["From"] = mail_from
     
     recipients = [email.strip() for email in mail_to.split(",") if email.strip()]
     if not recipients:
@@ -208,9 +212,11 @@ def generate_inline_noinfo_svg():
       </text>
     </svg>
     """
+    
 def generate_summary_card(vulns,vendor_line):
     severity_counts = {"?": 0, "low": 0, "medium": 0, "high": 0, "critical": 0}
-    vendors = set()
+    vendor_counts = defaultdict(int)
+    nb_vulns = len(vulns)
     for v in vulns:
         score = v.get("baseScore")
         try:
@@ -230,10 +236,13 @@ def generate_summary_card(vulns,vendor_line):
         for vendor_info in v.get("enisaIdVendor", []):
             name = vendor_info.get("vendor", {}).get("name", "").strip()
             if name:
-                vendors.add(name)
+                #vendors.add(name)
+                vendor_counts[name] += 1
+    # Format vendor list with counts
+    vendor_list = ', '.join(f"{vendor} ({count})" for vendor, count in sorted(vendor_counts.items()))
     return f"""
     <div class="card border-primary mb-3">
-      <div class="card-header bg-primary text-white"><strong>🔎 Daily Summary</strong></div>
+      <div class="card-header bg-primary text-white"><strong>🔎 &nbsp;Summary:</strong> {nb_vulns} vulnerabilities</div>
       <div class="card-body">
         <p class="card-text">
             <strong>Severity breakdown:</strong><br>
@@ -244,12 +253,12 @@ def generate_summary_card(vulns,vendor_line):
             <span title="Unknown">{cvss_severity_icon(0)} {severity_counts['?']}</span>             
         </p>
         <p class="card-text"><strong>Filtered vendors:</strong><br> {vendor_line}</p>
-        <p class="card-text"><strong>Affected vendors:</strong><br> {', '.join(sorted(vendors))}</p>
+        <p class="card-text"><strong>Vulnerabilities by vendor:</strong><br> {vendor_list}</p>
       </div>
     </div>
     """
 
-def save_and_generate_html(vulns, vendor_line,title):
+def daily_report(vulns, vendor_line,title):
     html_path = f"./web/daily/{today}.html"
     # Format the date for the title
     full_title = f"{title} - {formatted_date}"
@@ -322,16 +331,40 @@ def save_and_generate_html(vulns, vendor_line,title):
                 <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
                 <meta name="twitter:site" content="Julien Mousqueton">
                 <title>{full_title}</title>
+                <!-- Bootstrap 5.3.3 -->
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+                <!-- Font Awesome 6.5.0 -->
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 
-                <!-- DataTables (Bootstrap 5 style) -->
+                <!-- DataTables + Bootstrap 5 -->
                 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+                <!-- Buttons (Bootstrap 5 style only) -->
                 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
 
+                <!-- Responsive (Bootstrap 5 style) -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.4/css/responsive.bootstrap5.min.css">
+
+                <!-- jQuery 3.7.1 -->
                 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+                <!-- DataTables core + Bootstrap 5 -->
                 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
                 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+                <!-- Buttons (copy + CSV only) -->
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
+                <!-- Responsive -->
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/dataTables.responsive.min.js"></script>
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/responsive.bootstrap5.min.js"></script>
+
+                <!-- Dependencies for Excel -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
                 <style>
                     table {{
                         border-collapse: collapse;
@@ -395,7 +428,7 @@ def save_and_generate_html(vulns, vendor_line,title):
                         order: [],
                         responsive: true,
                         dom: 'Bfrtip',
-                        buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+                        buttons: ['excel'],
                         columnDefs: [
                             {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
                         ]
@@ -552,8 +585,7 @@ def get_cvss_color(score):
         return "#999999"  # par défaut
 
 
-def generate_alert_html(vulns, vendor_line,title):
-    #today = now.strftime("%B %d, %Y")
+def alert(vulns, vendor_line,title):
     full_title = f"{title} - {formatted_date}"
     rows = ""
     for v in vulns:
@@ -649,10 +681,10 @@ def generate_alert_html(vulns, vendor_line,title):
     """
     return html_content
 
-def generate_monthly_summary(vulns, keywords, month_year):
+def monthly_summary(vulns, keywords, month_year):
     severity_levels = ["critical", "high", "medium", "low", "?"]
     vendor_severity = {k: {s: 0 for s in severity_levels} for k in sorted(keywords)}
-
+    nb_vulns = len(vulns)
     for v in vulns:
         vendor_names = [vn.get("vendor", {}).get("name", "").strip() for vn in v.get("enisaIdVendor", [])]
         try:
@@ -690,6 +722,9 @@ def generate_monthly_summary(vulns, keywords, month_year):
     month_id = datetime.strptime(month_year, "%B %Y").strftime("%Y-%m")
     html_path = f"{MONTHLY_FOLDER}/{month_id}.html"
     report_url = f"{MONTHLY_URL}/{month_id}.html"
+
+    vendor_line = ", ".join(sorted(keywords))
+
     html_content = f"""
         <html>
             <head>
@@ -697,13 +732,58 @@ def generate_monthly_summary(vulns, keywords, month_year):
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <link rel="icon" type="image/png" href="https://vuln.mousqueton.io/favicon.png">
                 <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
+                <!-- Open Graph Meta -->
+                <meta property="og:type" content="article">
+                <meta property="og:locale" content="en_US">
+                <meta property="og:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
+                <meta property="og:description" content="Monthly breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
+                <meta property="og:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta property="og:image:width" content="1200">
+                <meta property="og:image:height" content="630">
+                <meta property="og:url" content="https://vuln.mousqueton.io/monthly/{month_year}.html">
+                <meta property="og:site_name" content="Julien Mousqueton">
+                <meta property="og:logo" content="https://vuln.mousqueton.io/logo.png">
+
+                <!-- Twitter Card Meta -->
+                <meta name="twitter:card" content="summary_large_image">
+                <meta name="twitter:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
+                <meta name="twitter:description" content="In {month_year}, {nb_vulns} new vulnerabilities across {vendor_line}.">
+                <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta name="twitter:site" content="Julien Mousqueton">
                 <title>Monthly Vulnerability Summary – {month_year}</title>
+                <!-- Bootstrap 5.3.3 -->
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+                <!-- Font Awesome 6.5.0 -->
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+                <!-- DataTables + Bootstrap 5 -->
                 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+                <!-- Buttons (Bootstrap 5 style only) -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+
+                <!-- Responsive (Bootstrap 5 style) -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.4/css/responsive.bootstrap5.min.css">
+
+                <!-- jQuery 3.7.1 -->
                 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+                <!-- DataTables core + Bootstrap 5 -->
                 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
                 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+                <!-- Buttons (copy + CSV only) -->
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
+                <!-- Responsive -->
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/dataTables.responsive.min.js"></script>
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/responsive.bootstrap5.min.js"></script>
+
+                <!-- Dependencies for Excel -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
                 <style>
                     table {{
@@ -738,7 +818,9 @@ def generate_monthly_summary(vulns, keywords, month_year):
             <div class="container mt-4">
                 <h2>📊 Monthly Vulnerability Summary – {month_year}</h2>
                 <p>📄 <a href="{report_url}">View this report online</a></p>
-                </br>
+                <br>
+                {generate_summary_card(vulns,vendor_line)}
+                <br>
                 <p>Summary of vulnerabilities by vendor and severity level.</p>
                 <table id="vuln-table" class="table table-bordered table-hover align-middle">
                     <thead class="table-light">
@@ -760,9 +842,12 @@ def generate_monthly_summary(vulns, keywords, month_year):
                         $('#vuln-table').DataTable({{
                         pageLength: 25,
                         lengthMenu: [10, 25, 50, 100],
-                        order: [],  // désactive le tri initial
+                        order: [],
+                        responsive: true,
+                        dom: 'Bfrtip',
+                        buttons: ['excel'],
                         columnDefs: [
-                            {{ orderable: false, targets: -1 }}  // désactive le tri sur la colonne "Radar"
+                            {{ orderable: false, targets: -1 }}  // désactive le tri sur la colonne "? (inconnu)"
                         ]
                         }});
                     }});
@@ -833,8 +918,8 @@ def main():
         new_matches = [v for v in matches if v["id"] not in sent_ids]
         if new_matches:
             title = "Daily Vulnerability Vendors Report"
-            html_content, saved_path = save_and_generate_html(new_matches, vendor_line,title)
-            send_html_email("📆 " + title, html_content, dry_run=args.dry_run)
+            html_content, saved_path = daily_report(new_matches, vendor_line,title)
+            send_html_email("📆 " + title, html_content, dry_run=args.dry_run,type="Daily")
             logger.info(f"📁 Saved HTML report to {saved_path}")
             if not args.dry_run:
                 sent_ids.update(v["id"] for v in new_matches)
@@ -865,15 +950,15 @@ def main():
                 </body>
                 </html>
                 """
-                send_html_email("📭  " + title + " – No new vulnerabilities", empty_html, dry_run=args.dry_run)
+                send_html_email("📭  " + title + " – No new vulnerabilities", empty_html, dry_run=args.dry_run,type="Daily")
     elif is_alert:
         sent_ids = load_sent_ids(SENT_IDS_ALERT_FILE)
         matches = filter_vulns(vulnerabilities, keywords, severity_filter=True)
         new_matches = [v for v in matches if v["id"] not in sent_ids]
         if new_matches:
             title = f"Urgent Alert - High Severity CVEs (CVSS ≥ {MIN_CVSS_TO_ALERT})"
-            html_content = generate_alert_html(new_matches, vendor_line,title)
-            send_html_email("🚨 " + title, html_content, dry_run=args.dry_run, high_priority=True)
+            html_content = alert(new_matches, vendor_line,title)
+            send_html_email("🚨 " + title, html_content, dry_run=args.dry_run, high_priority=True,type="Alert")
             if not args.dry_run:
                 sent_ids.update(v["id"] for v in new_matches)
                 save_sent_ids(SENT_IDS_ALERT_FILE, sent_ids)
@@ -886,8 +971,8 @@ def main():
         month_year = last_month_end.strftime("%B %Y")
         matches = filter_vulns(vulnerabilities, keywords)
         last_month_matches = filter_last_month(matches)
-        html_content, html_path = generate_monthly_summary(last_month_matches, keywords, month_year)
-        send_html_email(f"📊 Monthly Vulnerability Summary – {month_year}", html_content, dry_run=args.dry_run)
+        html_content, html_path = monthly_summary(last_month_matches, keywords, month_year)
+        send_html_email(f"📊 Monthly Vulnerability Summary – {month_year}", html_content, dry_run=args.dry_run,type="Monthly")
         logger.info(f"📁 Saved monthly summary to {html_path}")
 
 if __name__ == "__main__":
