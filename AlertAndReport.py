@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 import argparse
@@ -27,6 +28,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
 # Lock file to prevent multiple instances
 lock_file_path = os.getenv("LOCK_FILE", "/tmp/euvd.lock")
 lock_file = open(lock_file_path, "w")
@@ -39,8 +41,10 @@ load_dotenv()
 
 ## Define now()
 # Get the current date and time
-now = datetime.now(timezone)
-
+now_local = datetime.now(timezone)
+now = datetime.now()
+today = now_local.strftime("%Y-%m-%d")
+formatted_date = now_local.strftime("%B %d, %Y")
 # Format it in full English style
 full_date = now.strftime("%A, %B %d, %Y at %I:%M %p %Z")
 
@@ -58,18 +62,36 @@ DAILY_FOLDER = os.getenv("DAILY_FOLDER", "./web/daily")
 DAILY_URL = os.getenv("DAILY_URL", "https://vuln.mousqueton.io/daily")
 MONTHLY_URL = os.getenv("MONTHLY_URL", "https://vuln.mousqueton.io/monthly")
 MONTHLY_FOLDER = os.getenv("MONTHLY_FOLDER", "./web/monthly")
+NOVULN = os.getenv("NOVULN", "False").lower() in ("true", "1", "yes")
+LOG_FILE_PATH = os.getenv("LOG_FILE", "").strip()
 
 
-current_year = datetime.now().year
+current_year = now.year
 copyright_year = (
     f"2025–{current_year}" if current_year > 2025 else "2025"
 )
 
 footer_html = (
     f'<footer style="text-align:center; padding:1em 0; font-size:0.9em; color:#777;">'
-    f'&copy; {copyright_year} <a href="https://teams.microsoft.com/l/chat/0/0?users=julien.mousqueton@computacenter.com" target=_blank>Julien Mousqueton</a> – All rights reserved.<BR>'
-    'Source : <a href="https://euvd.enisa.europa.eu/" target=_blank>ENISA</a></footer>\n'
+    f'&copy; {copyright_year} '
+    f'<a href="https://teams.microsoft.com/l/chat/0/0?users=julien.mousqueton@computacenter.com" target=_blank>Julien Mousqueton</a> – All rights reserved.<br>'
+    'Source : <a href="https://euvd.enisa.europa.eu/" target=_blank>ENISA</a><br><br>'
+    '<a href="https://github.com/JMousqueton/EUVD-Alert" class="btn btn-dark btn-sm" target="_blank" style="margin-top:8px;">'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16" style="margin-right:6px;">'
+    '<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38 '
+    '0-.19-.01-.82-.01-1.49-2 .37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52 '
+    '-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 '
+    '0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.54 7.54 0 012-.27 7.54 '
+    '7.54 0 012 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 '
+    '0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 '
+    '8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>'
+    '</svg>'
+    'View on GitHub'
+    '</a>'
+    '</footer>\n'
 )
+
+
 
 legend_html = (
     '<div class="mt-4 p-3 bg-light border rounded">'
@@ -153,7 +175,13 @@ def send_html_email(subject, html_content, dry_run=False, high_priority=False):
         msg["From"] = "Urgent " + mail_from
     else:
         msg["From"] = "Daily " + mail_from
-    msg["To"] = mail_to
+    #msg["To"] = mail_to
+    
+    recipients = [email.strip() for email in mail_to.split(",") if email.strip()]
+    if not recipients:
+        logger.warning("❌ MAIL_TO is empty. Skipping email send.")
+        return
+    msg["To"] = ", ".join(recipients)
     if high_priority:
         msg["X-Priority"] = "1"
         msg["Priority"] = "urgent"
@@ -165,8 +193,8 @@ def send_html_email(subject, html_content, dry_run=False, high_priority=False):
                 server.starttls()
             if username and password:
                 server.login(username, password)
-            server.sendmail(mail_from, mail_to.split(","), msg.as_string())
-        logger.info(f"✅ Email sent: {subject}")
+            server.sendmail(mail_from, recipients, msg.as_string())
+        logger.info(f"✅ Email {subject} sent to {recipients}")
     except Exception as e:
         logger.info(f"❌ Failed to send email: {e}")
 
@@ -215,21 +243,20 @@ def generate_summary_card(vulns,vendor_line):
             <span title="Low">{cvss_severity_icon(2)} {severity_counts['low']}</span> &nbsp;
             <span title="Unknown">{cvss_severity_icon(0)} {severity_counts['?']}</span>             
         </p>
-        <p class="card-text"><strong>Affected vendors:</strong><br> {vendor_line}</p>
+        <p class="card-text"><strong>Filtered vendors:</strong><br> {vendor_line}</p>
+        <p class="card-text"><strong>Affected vendors:</strong><br> {', '.join(sorted(vendors))}</p>
       </div>
     </div>
     """
 
 def save_and_generate_html(vulns, vendor_line,title):
-    today = datetime.now().strftime("%Y-%m-%d")
     html_path = f"./web/daily/{today}.html"
     # Format the date for the title
-    formatted_date = datetime.now().strftime("%B %d, %Y")
     full_title = f"{title} - {formatted_date}"
     rows = ""
     nb_vulns = len(vulns)
     for v in vulns:
-        generate_radar_chart(v.get("baseScoreVector", ""), v["id"])
+        #generate_radar_chart(v.get("baseScoreVector", ""), v["id"])
         alt_id = v.get('aliases', '').strip()
         score = v.get("baseScore", "N/A")
         icon = cvss_severity_icon(score)
@@ -253,11 +280,10 @@ def save_and_generate_html(vulns, vendor_line,title):
             vendor_html = ""
 
         if has_radar:
-            generate_radar_chart(vector, v["id"])
+            generate_radar_chart(vector, v["id"], score)
             img_tag = f'<img src="{RADAR_URL}/{v["id"]}.png" class="img-fluid rounded shadow-sm" style="max-width: 150px;" alt="Radar">'
         else:
             img_tag = generate_inline_noinfo_svg()
-            #<td data-sort="6.8"><span title="Medium">🟡</span> 6.8</td>
         rows += f"""
             <tr>
                 <td><a href="{url}">{v['id']}</a><br><small>{alt_id}</small></td>
@@ -275,6 +301,8 @@ def save_and_generate_html(vulns, vendor_line,title):
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="icon" type="image/png" href="https://vuln.mousqueton.io/favicon.png">
+                <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
                 <!-- Open Graph Meta -->
                 <meta property="og:type" content="article">
                 <meta property="og:locale" content="en_US">
@@ -290,7 +318,7 @@ def save_and_generate_html(vulns, vendor_line,title):
                 <!-- Twitter Card Meta -->
                 <meta name="twitter:card" content="summary_large_image">
                 <meta name="twitter:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
-                <meta name="twitter:description" content="{nb_vulns} new vulnerabilities across {vendor_line}..">
+                <meta name="twitter:description" content="{nb_vulns} new vulnerabilities across {vendor_line}.">
                 <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
                 <meta name="twitter:site" content="Julien Mousqueton">
                 <title>{full_title}</title>
@@ -428,7 +456,6 @@ def filter_vulns(vulnerabilities, keywords, severity_filter=False):
     return matches
 
 def filter_last_month(vulns):
-    now = datetime.now()
     first_day_this_month = datetime(now.year, now.month, 1)
     last_month_end = first_day_this_month - timedelta(days=1)
     last_month_start = datetime(last_month_end.year, last_month_end.month, 1)
@@ -437,7 +464,6 @@ def filter_last_month(vulns):
     for v in vulns:
         date_str = v.get("dateUpdated", "")
         try:
-            # Handle format like "Apr 18, 2025, 4:44:25 PM"
             date = datetime.strptime(date_str, "%b %d, %Y, %I:%M:%S %p")
             if last_month_start <= date <= last_month_end:
                 filtered.append(v)
@@ -473,20 +499,35 @@ def parse_cvss_vector(vector):
     except:
         return [], []
 
-def generate_radar_chart(cvss_vector, chart_id):
+def generate_radar_chart(cvss_vector, chart_id, score=None):
     labels, values = parse_cvss_vector(cvss_vector)
     if not labels or not values:
         return None
+
     values += values[:1]
     angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
     angles += angles[:1]
+
+    color = get_cvss_color(score)
+
     fig, ax = plt.subplots(figsize=(3, 3), subplot_kw=dict(polar=True))
-    ax.plot(angles, values, linewidth=2)
-    ax.fill(angles, values, alpha=0.25)
+    ax.plot(angles, values, linewidth=2, color=color)
+    ax.fill(angles, values, alpha=0.25, color=color)
     ax.set_yticklabels([])
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels)
     ax.set_title("CVSS Radar", size=10)
+
+    # Score CVSS au centre
+    if score is not None:
+        try:
+            score_float = float(score)
+            ax.text(0.5 * np.pi, 0, f"{score_float:.1f}",
+                    ha='center', va='center', fontsize=12, fontweight='bold',
+                    bbox=dict(facecolor='white', edgecolor='gray', boxstyle='round,pad=0.3'))
+        except ValueError:
+            pass
+
     Path(RADAR_FOLDER).mkdir(parents=True, exist_ok=True)
     path = f"{RADAR_FOLDER}/{chart_id}.png"
     plt.tight_layout()
@@ -494,9 +535,26 @@ def generate_radar_chart(cvss_vector, chart_id):
     plt.close()
     return path
 
+def get_cvss_color(score):
+    try:
+        score = float(score)
+        if score == 0.0:
+            return "#999999"  # gris pour inconnu
+        elif score < 4.0:
+            return "#28a745"  # vert
+        elif score < 7.0:
+            return "#ffc107"  # jaune
+        elif score < 9.0:
+            return "#fd7e14"  # orange
+        else:
+            return "#dc3545"  # rouge
+    except:
+        return "#999999"  # par défaut
+
+
 def generate_alert_html(vulns, vendor_line,title):
-    today = datetime.now().strftime("%B %d, %Y")
-    full_title = f"{title} - {today}"
+    #today = now.strftime("%B %d, %Y")
+    full_title = f"{title} - {formatted_date}"
     rows = ""
     for v in vulns:
         score = v.get("baseScore", "N/A")
@@ -519,7 +577,7 @@ def generate_alert_html(vulns, vendor_line,title):
         else:
             vendor_html = ""
         if has_radar:
-            generate_radar_chart(vector, v["id"])
+            generate_radar_chart(vector, v["id"], score)
             img_tag = f'<img src="{RADAR_URL}/{v["id"]}.png" class="img-fluid rounded shadow-sm" style="max-width: 150px;" alt="Radar">'
         else:
             img_tag = generate_inline_noinfo_svg()
@@ -637,6 +695,8 @@ def generate_monthly_summary(vulns, keywords, month_year):
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="icon" type="image/png" href="https://vuln.mousqueton.io/favicon.png">
+                <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
                 <title>Monthly Vulnerability Summary – {month_year}</title>
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -724,8 +784,21 @@ def main():
     parser.add_argument("--alert", "-A", action="store_true", help="Send alert report")
     parser.add_argument("--monthly", "-M", action="store_true", help="Send monthly summary")
     parser.add_argument("--dry-run", action="store_true", help="Simulate sending without actually sending emails")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")  # 👈 Ajouté ici
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")  
+    parser.add_argument("--log", action="store_true", help="Enable logging to file if LOG_FILE is set in .env")  
     args = parser.parse_args()
+
+    if args.log and LOG_FILE_PATH:
+        file_handler = logging.FileHandler(LOG_FILE_PATH)
+        file_handler.setLevel(logging.DEBUG if args.debug else logging.INFO)
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logger.info(f"🚀 Running script: {os.path.abspath(sys.argv[0])}")
+        logger.info(f"📂 File logging enabled: {LOG_FILE_PATH}")
+    elif args.log:
+        logger.warning("⚠️ --log flag used but LOG_FILE is not set in .env")
+
 
     if args.debug:
         logger.setLevel(logging.DEBUG)
@@ -767,29 +840,32 @@ def main():
                 sent_ids.update(v["id"] for v in new_matches)
                 save_sent_ids(SENT_IDS_DAILY_FILE, sent_ids)
         else:
-            title = "Daily Vulnerability Vendors Report"
-            today = datetime.now().strftime("%B %d, %Y")
-            report_title = f"{title} - {today}"
-            report_url = f"{MONTHLY_URL}/{today}.html"
-            empty_html = f"""
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>{report_title}</title>
-                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            </head>
-            <body>
-                <div class="container mt-4">
-                    <h2><i class="fa-regular fa-calendar-days"></i> {report_title}</h2>
-                    
-                    <p class="alert alert-info"><strong>No new vulnerabilities</strong> matched the configured vendors.</p>
-                    <p><strong>Vendors list:</strong> {vendor_line}</p>
-                </div>
-                {footer_html}
-            </body>
-            </html>
-            """
-            send_html_email("📭  " + title + " – No new vulnerabilities", empty_html, dry_run=args.dry_run)
+            if not NOVULN:
+                logger.info("📭 No new vulnerabilities and NOVULN=False — Skipping daily email.")
+            else:
+                title = "Daily Vulnerability Vendors Report"
+                today = now.strftime("%B %d, %Y")
+                report_title = f"{title} - {today}"
+                report_url = f"{MONTHLY_URL}/{today}.html"
+                empty_html = f"""
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>{report_title}</title>
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+                </head>
+                <body>
+                    <div class="container mt-4">
+                        <h2><i class="fa-regular fa-calendar-days"></i> {report_title}</h2>
+                        
+                        <p class="alert alert-info"><strong>No new vulnerabilities</strong> matched the configured vendors.</p>
+                        <p><strong>Vendors list:</strong> {vendor_line}</p>
+                    </div>
+                    {footer_html}
+                </body>
+                </html>
+                """
+                send_html_email("📭  " + title + " – No new vulnerabilities", empty_html, dry_run=args.dry_run)
     elif is_alert:
         sent_ids = load_sent_ids(SENT_IDS_ALERT_FILE)
         matches = filter_vulns(vulnerabilities, keywords, severity_filter=True)
@@ -804,7 +880,7 @@ def main():
         else:
             logger.info("No new high-severity vulnerabilities to alert.")
     elif is_monthly:
-        now = datetime.now()
+        #now = datetime.now()
         first_day_this_month = datetime(now.year, now.month, 1)
         last_month_end = first_day_this_month - timedelta(days=1)
         month_year = last_month_end.strftime("%B %Y")
