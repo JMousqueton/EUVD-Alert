@@ -238,8 +238,13 @@ def generate_summary_card(vulns,vendor_line):
             if name:
                 #vendors.add(name)
                 vendor_counts[name] += 1
+    
     # Format vendor list with counts
-    vendor_list = ', '.join(f"{vendor} ({count})" for vendor, count in sorted(vendor_counts.items()))
+    vendor_list = ', '.join(
+    f"{vendor.capitalize()} ({count})"
+    for vendor, count in sorted(vendor_counts.items(), key=lambda x: x[0].capitalize())
+    )
+
     return f"""
     <div class="card border-primary mb-3">
       <div class="card-header bg-primary text-white"><strong>🔎 &nbsp;Summary:</strong> {nb_vulns} vulnerabilities</div>
