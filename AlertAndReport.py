@@ -322,18 +322,18 @@ def daily_report(vulns, vendor_line,title):
                 <meta property="og:locale" content="en_US">
                 <meta property="og:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
                 <meta property="og:description" content="Daily breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
-                <meta property="og:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta property="og:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
                 <meta property="og:image:width" content="1200">
                 <meta property="og:image:height" content="630">
                 <meta property="og:url" content="https://vuln.mousqueton.io/daily/{today}.html">
                 <meta property="og:site_name" content="Julien Mousqueton">
-                <meta property="og:logo" content="https://vuln.mousqueton.io/logo.png">
+                <meta property="og:logo" content="https://vuln.mousqueton.io/assets/logo.png">
 
                 <!-- Twitter Card Meta -->
                 <meta name="twitter:card" content="summary_large_image">
                 <meta name="twitter:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
                 <meta name="twitter:description" content="{nb_vulns} new vulnerabilities across {vendor_line}.">
-                <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta name="twitter:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
                 <meta name="twitter:site" content="Julien Mousqueton">
                 <title>{full_title}</title>
                 <!-- Bootstrap 5.3.3 -->
@@ -789,18 +789,18 @@ def monthly_summary(vulns, keywords, month_year):
                 <meta property="og:locale" content="en_US">
                 <meta property="og:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
                 <meta property="og:description" content="Monthly breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
-                <meta property="og:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta property="og:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
                 <meta property="og:image:width" content="1200">
                 <meta property="og:image:height" content="630">
                 <meta property="og:url" content="https://vuln.mousqueton.io/monthly/{month_year}.html">
                 <meta property="og:site_name" content="Julien Mousqueton">
-                <meta property="og:logo" content="https://vuln.mousqueton.io/logo.png">
+                <meta property="og:logo" content="https://vuln.mousqueton.io/assets/logo.png">
 
                 <!-- Twitter Card Meta -->
                 <meta name="twitter:card" content="summary_large_image">
                 <meta name="twitter:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
                 <meta name="twitter:description" content="In {month_year}, {nb_vulns} new vulnerabilities across {vendor_line}.">
-                <meta name="twitter:image" content="https://vuln.mousqueton.io/daily-preview.png">
+                <meta name="twitter:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
                 <meta name="twitter:site" content="Julien Mousqueton">
                 <title>Monthly Vulnerability Summary – {month_year}</title>
                 <!-- Bootstrap 5.3.3 -->
