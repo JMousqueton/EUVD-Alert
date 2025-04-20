@@ -212,7 +212,7 @@ def generate_inline_noinfo_svg():
       </text>
     </svg>
     """
-    
+
 def generate_summary_card(vulns,vendor_line):
     severity_counts = {"?": 0, "low": 0, "medium": 0, "high": 0, "critical": 0}
     vendor_counts = defaultdict(int)
@@ -396,48 +396,50 @@ def daily_report(vulns, vendor_line,title):
                 </style>
             </head>
             <body>
-                <h2><i class="fa-regular fa-calendar-days"></i> {full_title}</h2>
-                <p>📄 <a href="{report_url}">View this report online</a></p>
-                <br>
-                {generate_summary_card(vulns,vendor_line)}
-                <br>
-                <div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">
-                    Page generated on {full_date}
-                </div>
-                <table id="vuln-table" class="table table-bordered table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>CVSS</th>
-                            <th>Exploited</th>
-                            <th>Vendor</th>
-                            <th data-sort-method="none">Product</th>
-                            <th data-sort-method="none">Description</th>
-                            <th data-sort-method="none">Radar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows}
-                    </tbody>
-                </table>
-                <script>
-                    $(document).ready(function () {{
-                        $('#vuln-table').DataTable({{
-                        pageLength: 25,
-                        lengthMenu: [10, 25, 50, 100],
-                        order: [],
-                        responsive: true,
-                        dom: 'Bfrtip',
-                        buttons: ['excel'],
-                        columnDefs: [
-                            {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
-                        ]
+                <div class="container mt-4">
+                    <h2><i class="fa-regular fa-calendar-days"></i> {full_title}</h2>
+                    <p>📄 <a href="{report_url}">View this report online</a></p>
+                    <br>
+                    {generate_summary_card(vulns,vendor_line)}
+                    <br>
+                    <div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">
+                        Page generated on {full_date}
+                    </div>
+                    <table id="vuln-table" class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>CVSS</th>
+                                <th>Exploited</th>
+                                <th>Vendor</th>
+                                <th data-sort-method="none">Product</th>
+                                <th data-sort-method="none">Description</th>
+                                <th data-sort-method="none">Radar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows}
+                        </tbody>
+                    </table>
+                    <script>
+                        $(document).ready(function () {{
+                            $('#vuln-table').DataTable({{
+                            pageLength: 25,
+                            lengthMenu: [10, 25, 50, 100],
+                            order: [],
+                            responsive: true,
+                            dom: 'Bfrtip',
+                            buttons: ['excel'],
+                            columnDefs: [
+                                {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
+                            ]
+                            }});
                         }});
-                    }});
-                </script>
-                <div class="mt-4 p-3 bg-light border rounded">
-                    {vendor_html}
-                    {legend_html}
+                    </script>
+                    <div class="mt-4 p-3 bg-light border rounded">
+                        {vendor_html}
+                        {legend_html}
+                    </div>
                 </div>
                 {footer_html}
             </body>
@@ -477,16 +479,61 @@ def matches_keyword_all(entry, keywords):
 def filter_vulns(vulnerabilities, keywords, severity_filter=False):
     matches = []
     for v in vulnerabilities:
-        if matches_keyword(v, keywords):
+        vuln_id = v.get("id", "UNKNOWN")
+        vendor_names = [vn.get("vendor", {}).get("name", "").strip().lower() for vn in v.get("enisaIdVendor", [])]
+        vendor_is_na = all(name in ("", "n/a") for name in vendor_names)
+
+        matched_keyword = None
+        match = False
+
+        if vendor_is_na:
+            # Fallback: match in description, id or aliases
+            text = (
+                v.get("id", "") + " " +
+                v.get("description", "") + " " +
+                v.get("aliases", "")
+            ).lower()
+            logger.debug(f"[{vuln_id}] TEXT for keyword matching: {text}")
+
+            positive = [k for k in keywords if not k.startswith("!")]
+            negative = [k[1:].lower() for k in keywords if k.startswith("!")]
+
+            if any(neg in text for neg in negative):
+                match = False
+                logger.debug(f"[{vuln_id}] Skipped due to negative keyword match.")
+            else:
+                for keyword in positive:
+                    if keyword.lower() in text:
+                        matched_keyword = keyword[0].upper() + keyword[1:]  # Uppercase first letter
+                        match = True
+                        logger.debug(f"[{vuln_id}] Match found with keyword '{matched_keyword}' in fallback text.")
+                        break
+
+            if match and matched_keyword:
+                v["enisaIdVendor"] = [{
+                    "vendor": {"name": matched_keyword}
+                }]
+        else:
+            match = matches_keyword(v, keywords)
+            logger.debug(f"[{vuln_id}] Vendor(s): {vendor_names} → Match: {match}")
+
+        if match:
             try:
                 if severity_filter:
-                    if float(v.get("baseScore", 0)) >= MIN_CVSS_TO_ALERT:
+                    score = float(v.get("baseScore", 0))
+                    if score >= MIN_CVSS_TO_ALERT:
+                        logger.debug(f"[{vuln_id}] Score {score} >= threshold {MIN_CVSS_TO_ALERT} → Added to matches")
                         matches.append(v)
+                    else:
+                        logger.debug(f"[{vuln_id}] Score {score} < threshold {MIN_CVSS_TO_ALERT} → Skipped")
                 else:
                     matches.append(v)
+                    logger.debug(f"[{vuln_id}] Match added (no severity filter).")
             except ValueError:
-                continue
+                logger.debug(f"[{vuln_id}] Invalid CVSS score → Skipped")
     return matches
+
+
 
 def filter_last_month(vulns):
     first_day_this_month = datetime(now.year, now.month, 1)
@@ -862,6 +909,32 @@ def monthly_summary(vulns, keywords, month_year):
         f.write(html_content)
     return html_content, html_path
 
+def list_vendors():
+    try:
+        with open(VULN_FILE, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        i = 0
+        vendors = set()
+        for entry in data:
+            for vendor_entry in entry.get("enisaIdVendor", []):
+                name = vendor_entry.get("vendor", {}).get("name", "").strip()
+                if name and name.lower() != "n/a":
+                    vendors.add(name)
+
+        sorted_vendors = sorted(vendors)
+
+        logger.info("Unique vendors found (sorted alphabetically):")
+        for vendor in sorted_vendors:
+            print(f"{vendor}")
+            i+=1
+        print(f"Total unique vendors: {i}")
+    except FileNotFoundError:
+        logger.error(f"File '{VULN_FILE}' not found.")
+    except json.JSONDecodeError:
+        logger.error(f"File '{VULN_FILE}' is not valid JSON.")
+    except Exception as e:
+        logger.exception(f"Unexpected error while listing vendors: {e}")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -871,6 +944,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Simulate sending without actually sending emails")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")  
     parser.add_argument("--log", action="store_true", help="Enable logging to file if LOG_FILE is set in .env")  
+    parser.add_argument('--list', '-L', action='store_true', help='List all unique vendors alphabetically from eucv.json')
     args = parser.parse_args()
 
     if args.log and LOG_FILE_PATH:
@@ -888,6 +962,10 @@ def main():
     if args.debug:
         logger.setLevel(logging.DEBUG)
         logger.debug("🔍 Debug logging enabled.")
+
+    if args.list:
+        list_vendors()
+        sys.exit(0)
 
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
