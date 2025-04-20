@@ -107,9 +107,30 @@
   <main class="container py-5">
     <section class="mb-5">
       <h2 class="section-title text-primary">What is EUVD-Alert?</h2>
-      <p class="fs-5">
-        <strong>EUVD-Alert</strong> is a personal project developed by cybersecurity expert Julien Mousqueton to automatically monitor and receive alerts on new vulnerabilities from the ENISA Vulnerability Database (EUVD). The tool retrieves newly published CVEs and, based on customizable vendor and criticality criteria, sends targeted email alerts. In addition to real-time alerts, it generates a daily summary report of all vulnerabilities matching vendor filters, and a monthly summary that provides a customizable matrix of vulnerabilities per vendor. EUVD-Alert streamlines vulnerability tracking and enhances situational awareness through automation and clear, formatted reporting.
+      <p>
+        <strong>EUVD-Alert</strong> is a personal project developed by cybersecurity expert 
+    <strong>Julien Mousqueton</strong> to <strong>automatically monitor and receive alerts on new vulnerabilities</strong> 
+    from the <strong>ENISA Vulnerability Database (EUVD)</strong>.
       </p>
+      <p>
+        The tool fetches newly published CVEs and, based on <strong>customizable filters</strong> 
+        such as <strong>vendor names</strong> and <strong>CVSS severity</strong>, delivers 
+        <strong>real-time email alerts</strong> for critical or relevant vulnerabilities.
+      </p>
+    
+      <p>In addition to real-time alerts, EUVD-Alert also generates:</p>
+    
+      <ul>
+        <li>A <strong>daily HTML report</strong> summarizing all vulnerabilities that match the selected filters.</li>
+        <li>A <strong>monthly matrix-style summary</strong> showing the distribution of vulnerabilities by <strong>vendor</strong> and <strong>severity level</strong>.</li>
+      </ul>
+    
+      <p>
+        By combining <strong>real-time detection</strong>, <strong>targeted notifications</strong>, and 
+        <strong>automated reporting</strong>, <strong>EUVD-Alert</strong> streamlines vulnerability tracking 
+        and enhances situational awareness for security teams and professionals.
+      </p>
+    
     </section>
 
     <section class="mb-5">
@@ -138,9 +159,11 @@
 
     <section class="mb-5">
       <h2 class="section-title text-primary">Why EUVD-Alert?</h2>
-      <p class="fs-5">
-        
-Following the uncertainty and funding challenges surrounding the MITRE NVD database, Julien Mousqueton decided to build a custom monitoring script leveraging the ENISA Vulnerability Database (EUVD) as a reliable alternative. The goal was to ensure continued access to timely, structured vulnerability data without depending solely on the NVD. By creating EUVD-Alert, he aimed to stay informed on relevant threats while promoting the use of European-driven cybersecurity resources through automation and tailored alerts.
+      <p>
+        The EUVD-Alert project was initiated in response to the challenges and uncertainties surrounding the 
+        <a href="https://nvd.nist.gov/" target="_blank" class="link-primary text-decoration-underline">MITRE NVD</a> database, 
+        which is a widely used source for vulnerability data. Concerns about the reliability and funding of the NVD 
+        led to a search for alternative solutions that could provide timely and structured vulnerability information.
       </p>
     </section>
 
@@ -177,12 +200,12 @@ Following the uncertainty and funding challenges surrounding the MITRE NVD datab
 
     <section class="mb-5">
         <h2 class="section-title text-primary">Powered by ENISA Vulnerability Database</h2>
-        <p class="fs-5">
+        <p>
           EUVD-Alert leverages the official 
           <a href="https://euvd.enisa.europa.eu/" target="_blank" class="link-primary text-decoration-underline">ENISA Vulnerability Database</a> 
           as its primary data source. This ensures that the reported vulnerabilities are up-to-date, relevant, and aligned with European cybersecurity standards.
         </p>
-        <p class="fs-5">
+        <p>
           By integrating ENISA's trusted feed with custom filtering and alerting logic, EUVD-Alert helps you react faster to threats that matter in your specific context.
         </p>
       </section>
