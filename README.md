@@ -52,6 +52,12 @@ Each vulnerability report includes a radar chart visualizing the CVSS vector com
 
 ![Radar for EUVD-2025-11786](https://vuln.mousqueton.io/radars/EUVD-2025-11786.png "EUVD-2025-11786")
 
+## 📺 Demos
+
+### Monthly report 
+
+- [March 2025](https://vuln.mousqueton.io/monthly/2025-03.html)
+
 ## 🕹️ Usage
 
 ```bash
