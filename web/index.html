@@ -11,6 +11,8 @@
   <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
   <link rel="apple-touch-icon" href="https://vuln.mousqueton.io/favicon.png">
 
+  <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+
   <meta name="description" content="EUVD-Alert provides daily and real-time alerts for software vulnerabilities impacting European vendors. Powered by ENISA and fully open-source.">
 
 
@@ -106,8 +108,7 @@
     <section class="mb-5">
       <h2 class="section-title text-primary">What is EUVD-Alert?</h2>
       <p class="fs-5">
-        <strong>EUVD-Alert</strong> is a proactive vulnerability notification system focused on newly disclosed software vulnerabilities that may affect European entities.
-        It collects, filters, and formats CVE (Common Vulnerabilities and Exposures) data to provide timely alerts via email in both <strong>daily digest</strong> and <strong>critical real-time</strong> formats.
+        <strong>EUVD-Alert</strong> is a personal project developed by cybersecurity expert Julien Mousqueton to automatically monitor and receive alerts on new vulnerabilities from the ENISA Vulnerability Database (EUVD). The tool retrieves newly published CVEs and, based on customizable vendor and criticality criteria, sends targeted email alerts. In addition to real-time alerts, it generates a daily summary report of all vulnerabilities matching vendor filters, and a monthly summary that provides a customizable matrix of vulnerabilities per vendor. EUVD-Alert streamlines vulnerability tracking and enhances situational awareness through automation and clear, formatted reporting.
       </p>
     </section>
 
@@ -138,9 +139,8 @@
     <section class="mb-5">
       <h2 class="section-title text-primary">Why EUVD-Alert?</h2>
       <p class="fs-5">
-        Cybersecurity teams across Europe often struggle to stay on top of daily vulnerability disclosures. 
-        EUVD-Alert streamlines triage by highlighting only relevant and actionable vulnerabilities using customizable filters.
-        It's built for clarity, automation, and speed.
+        
+Following the uncertainty and funding challenges surrounding the MITRE NVD database, Julien Mousqueton decided to build a custom monitoring script leveraging the ENISA Vulnerability Database (EUVD) as a reliable alternative. The goal was to ensure continued access to timely, structured vulnerability data without depending solely on the NVD. By creating EUVD-Alert, he aimed to stay informed on relevant threats while promoting the use of European-driven cybersecurity resources through automation and tailored alerts.
       </p>
     </section>
 
@@ -222,5 +222,20 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   </script>
+  <!-- Matomo -->
+<script>
+  var _paq = window._paq = window._paq || [];
+  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+    var u="https://stats.mousqueton.io/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '4']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+<!-- End Matomo Code -->
 </body>
 </html>
