@@ -19,6 +19,8 @@ All settings are managed via the `.env` file:
 ```dotenv
 VULN_FILE=euvd.json
 KEYWORDS_FILE=vendors.json
+NOVULN=True
+LOG_FILE=./logs/euvd.log
 SENT_IDS_DAILY_FILE=sent_ids_daily.json
 SENT_IDS_ALERT_FILE=sent_ids_alert.json
 MIN_CVSS_TO_ALERT=8
@@ -32,8 +34,10 @@ MAIL_USERNAME=you@example.com
 MAIL_PASSWORD=yourpassword
 MAIL_FROM=you@example.com
 MAIL_TO=alerts@example.com
+MAIL_TLS=False
 LOCK_FILE=/tmp/euvd.lock
 ```
+Check [.env.default](.env.default) for explainations 
 
 ## 📬 Email Output
 
