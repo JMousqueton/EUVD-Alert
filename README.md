@@ -66,6 +66,14 @@ python3 euvd-alert.py --alert       # For alert mode (severity & vendors match)
 python3 euvd-alert.py --monthly     # Monthly vendors/CVSS matrix summary
 ```
 
+## 🕐 Example of cron
+
+```
+5 * * * * cd /opt/EUVD-Alert ; python3 Get-EUVD.py --log > /dev/null 2>&1 python3 AlertAndReport.py -A --log > /dev/null 2>&1
+0 5 * * * cd /opt/EUVD-Alert ; python3 AlertAndReport.py -D --log > /dev/null 2>&1
+0 4 1 * * cd /opt/EUVD-Alert && /usr/bin/python3 AlertAndReport.py -M --log > /dev/null 2>&1
+```
+
 ## 📁 Output Files
 
 - HTML reports: stored in `./web/daily/YYYY-MM-DD.html`
