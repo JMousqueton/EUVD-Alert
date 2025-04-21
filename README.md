@@ -37,7 +37,7 @@ MAIL_TO=alerts@example.com
 MAIL_TLS=False
 LOCK_FILE=/tmp/euvd.lock
 ```
-Check [.env.default](.env.default) for explainations 
+Check [.env.default](env.sample) for explainations 
 
 ## 📬 Email Output
 
