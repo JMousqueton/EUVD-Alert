@@ -4,6 +4,7 @@ import os
 import argparse
 import requests
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import numpy as np
 import hashlib
 from pathlib import Path
@@ -90,7 +91,22 @@ footer_html = (
     'View on GitHub'
     '</a>'
     '</footer>\n'
-)
+    '<!-- Matomo -->\n'
+    '<script>\n'
+    'var _paq = window._paq = window._paq || [];\n'
+    '/* tracker methods like "setCustomDimension" should be called before "trackPageView" */\n'
+    '_paq.push(["trackPageView"]);\n'
+    '_paq.push(["enableLinkTracking"]);\n'
+    '(function() {\n'
+    '    var u="https://stats.mousqueton.io/";\n'
+    '    _paq.push(["setTrackerUrl", u+"matomo.php"]);\n'
+    '    _paq.push(["setSiteId", "4"]);\n'
+    '    var d=document, g=d.createElement("script"), s=d.getElementsByTagName("script")[0];\n'
+    '    g.async=true; g.src=u+"matomo.js"; s.parentNode.insertBefore(g,s);\n'
+    '})();\n'
+    '</script>\n'
+    '<!-- End Matomo Code -->\n'
+    )
 
 
 
@@ -406,7 +422,6 @@ def daily_report(vulns, vendor_line,title):
                     <p>📄 <a href="{report_url}">View this report online</a></p>
                     <br>
                     {generate_summary_card(vulns,vendor_line)}
-                    <br>
                     <div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">
                         Page generated on {full_date}
                     </div>
@@ -443,9 +458,15 @@ def daily_report(vulns, vendor_line,title):
                     </script>
                     <div class="mt-4 p-3 bg-light border rounded">
                         {vendor_html}
-                        {legend_html}
-                    </div>
-                </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                {legend_html}
+                            </div>
+                            <div class="col-md-6">
+                                {def_html}
+                            </div>
+                        </div>
+                    </div>  
                 {footer_html}
             </body>
         </html>
@@ -454,6 +475,7 @@ def daily_report(vulns, vendor_line,title):
         f.write(html_content)
     return html_content, html_path
 
+'''
 def load_json_file(path):
     if not os.path.exists(path):
         return []
@@ -462,6 +484,24 @@ def load_json_file(path):
             return json.load(f)
         except json.JSONDecodeError:
             return []
+'''
+def load_json_file(path):
+    if not os.path.exists(path):
+        logger.error(f"❌ File not found: {path}")
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if not isinstance(data, list):
+                logger.error(f"❌ File does not contain a valid list: {path}")
+                return []
+            return data
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON decode error in {path}: {e}")
+        return []
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error reading {path}: {e}")
+        return []
 
 def matches_keyword(entry, keywords):
     vendor_names = " ".join(
@@ -733,7 +773,91 @@ def alert(vulns, vendor_line,title):
     """
     return html_content
 
+def generate_vuln_bar_chart(vulns, month_year, output_dir=MONTHLY_FOLDER):
+    # Define severity levels and color map
+    severity_levels = ["critical", "high", "medium", "low", "?"]
+    color_map = {
+        "critical": "red",
+        "high": "orange",
+        "medium": "gold",
+        "low": "green",
+        "?": "gray"
+    }
+
+    def get_severity(score):
+        try:
+            score = float(score)
+        except:
+            score = 0.0
+        if score == 0.0:
+            return "?"
+        elif score < 4.0:
+            return "low"
+        elif score < 7.0:
+            return "medium"
+        elif score < 9.0:
+            return "high"
+        else:
+            return "critical"
+
+    # Parse the month and year
+    target_date = datetime.strptime(month_year, "%Y-%m")
+    month_year_str = target_date.strftime("%B %Y")
+    target_month = target_date.month
+    target_year = target_date.year
+
+    # Setup date range
+    first_day = datetime(target_year, target_month, 1).date()
+    if target_month == 12:
+        last_day = datetime(target_year + 1, 1, 1).date() - timedelta(days=1)
+    else:
+        last_day = datetime(target_year, target_month + 1, 1).date() - timedelta(days=1)
+    all_days = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
+
+    # Count vulnerabilities per severity per day
+    daily_counts = defaultdict(lambda: defaultdict(int))
+    for v in vulns:
+        try:
+            pub_date = datetime.strptime(v["dateUpdated"], "%b %d, %Y, %I:%M:%S %p").date()
+            if pub_date.year == target_year and pub_date.month == target_month:
+                severity = get_severity(v.get("baseScore", 0.0))
+                daily_counts[pub_date][severity] += 1
+        except Exception:
+            continue
+
+    # Prepare data for plotting
+    severity_data = {sev: [daily_counts[day][sev] for day in all_days] for sev in severity_levels}
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(14, 6))
+    bottom = [0] * len(all_days)
+
+    for sev in severity_levels:
+        ax.bar(all_days, severity_data[sev], bottom=bottom, color=color_map[sev], label=sev.capitalize())
+        bottom = [bottom[i] + severity_data[sev][i] for i in range(len(all_days))]
+
+    ax.set_title(f"Cumulative vulnerabilities per day for selected vendors in {month_year_str}", fontsize=14)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Number of vulnerabilities")
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+    ax.yaxis.grid(True, linestyle='--', linewidth=0.5, color='lightgray')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%b'))
+    plt.xticks(rotation=45)
+    ax.legend(title="Severity")
+
+    # Save figure
+    filename = f"{month_year}.png"
+    output_path = os.path.join(output_dir, filename)
+    fig.tight_layout()
+    plt.savefig(output_path, dpi=100)
+    plt.close()
+
+    return output_path
+
 def monthly_summary(vulns, keywords, month_year):
+    parsed_date = datetime.strptime(month_year, "%B %Y")
+    month_year_filename = parsed_date.strftime("%Y-%m")
+    generate_vuln_bar_chart(vulns,month_year_filename)
     severity_levels = ["critical", "high", "medium", "low", "?"]
     vendor_severity = {k: {s: 0 for s in severity_levels} for k in sorted(keywords)}
     nb_vulns = len(vulns)
@@ -904,6 +1028,10 @@ def monthly_summary(vulns, keywords, month_year):
                         }});
                     }});
                 </script>
+                <div class="text-center my-4">
+    
+    <img src="{MONTHLY_URL}/{month_id}.png" alt="Cumulative Vulnerabilities per Day for selected vendors for {month_year}" class="img-fluid rounded shadow">
+</div>
                 {def_html}
             </div>
             {footer_html}
