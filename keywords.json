@@ -1,0 +1,16 @@
+[
+  "Fortinet:FortiOS",
+  "Fortinet:FortiManager",
+  "Fortinet:FortiAnalyzer",
+  "!Cisco:",
+  "Wazuh:",
+  "Ubuntu:",
+  "!Linux:",
+  "Palo Alto Networks:",
+  "Stormshield:",
+  "!Microsoft:",
+  "Veeam:",
+  "Ivanti:Connect Secure",
+  "F5 Networks:",
+  "F5 Networks inc.:"
+]
