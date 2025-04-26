@@ -6,38 +6,19 @@
 
 - Daily retrieval of vulnerabilities from the ENISA EUVD API
 - Filtering based on CVSS score (e.g., alert if score ≥ 8.0)
-- Vendor-based filtering
+- Vendor-based & Product-based filtering (see [keywords.json](keyword.json))
 - HTML report generation (daily summary and alert-specific)
 - Automated email delivery with formatted vulnerability tables
 - CVSS radar chart generation for visual severity analysis
 - Tracking of processed vulnerabilities to avoid duplicates
+- Add EPSS from [FIRST](https://www.first.org) 
+- Logging to file feature 
 
 ## ⚙️ Configuration
 
-All settings are managed via the `.env` file:
+All settings are managed via the `.env` file
 
-```dotenv
-VULN_FILE=euvd.json
-KEYWORDS_FILE=vendors.json
-NOVULN=True
-LOG_FILE=./logs/euvd.log
-SENT_IDS_DAILY_FILE=sent_ids_daily.json
-SENT_IDS_ALERT_FILE=sent_ids_alert.json
-MIN_CVSS_TO_ALERT=8
-RADAR_FOLDER=./web/radars
-DAILY_FOLDER=./web/daily
-RADAR_URL=https://vuln.mousqueton.io/radars
-DAILY_URL=https://vuln.mousqueton.io/daily
-MAIL_SERVER=smtp.example.com
-MAIL_PORT=465
-MAIL_USERNAME=you@example.com
-MAIL_PASSWORD=yourpassword
-MAIL_FROM=you@example.com
-MAIL_TO=alerts@example.com
-MAIL_TLS=False
-LOCK_FILE=/tmp/euvd.lock
-```
-Check [.env.default](env.sample) for explainations 
+Check [env.sample](env.sample) for explainations 
 
 ## 📬 Email Output
 
@@ -89,6 +70,9 @@ python3 euvd-alert.py --monthly     # Monthly vendors/CVSS matrix summary
 
 ## 🚧 Roadmap
 
+- ~~Add EPSS from [FIRST](https://www.first.org)~~ ✅ 
+- ~~Generate a HTML page also for alert~~ ✅ 
+- ~~Filtering on product-based~~ ✅
 - Optional Slack/Teams integration
 - Web dashboard for historical CVE tracking
 - Enhanced analytics and visualizations

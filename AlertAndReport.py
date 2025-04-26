@@ -16,7 +16,9 @@ from datetime import datetime, timedelta
 import pytz
 import logging
 import fcntl
-from collections import defaultdict
+from collections import defaultdict, Counter
+import re
+import math
 
 # Setup logging
 logging.basicConfig(
@@ -64,9 +66,11 @@ DAILY_FOLDER = os.getenv("DAILY_FOLDER", "./web/daily")
 DAILY_URL = os.getenv("DAILY_URL", "https://vuln.mousqueton.io/daily")
 MONTHLY_URL = os.getenv("MONTHLY_URL", "https://vuln.mousqueton.io/monthly")
 MONTHLY_FOLDER = os.getenv("MONTHLY_FOLDER", "./web/monthly")
+ALERTS_URL = os.getenv("ALERTS_URL", "https://vuln.mousqueton.io/alerts")
+ALERTS_FOLDER = os.getenv("ALERTS_FOLDER", "./web/alerts")
 NOVULN = os.getenv("NOVULN", "False").lower() in ("true", "1", "yes")
 LOG_FILE_PATH = os.getenv("LOG_FILE", "").strip()
-
+FIRST_EPSS= os.getenv("FIRST_EPSS", "False").lower() in ("true", "1", "yes")
 
 current_year = now.year
 copyright_year = (
@@ -77,7 +81,7 @@ footer_html = (
     f'<footer style="text-align:center; padding:1em 0; font-size:0.9em; color:#777;">'
     f'&copy; {copyright_year} '
     f'<a href="https://teams.microsoft.com/l/chat/0/0?users=julien.mousqueton@computacenter.com" target=_blank>Julien Mousqueton</a> – All rights reserved.<br>'
-    'Source : <a href="https://euvd.enisa.europa.eu/" target=_blank>ENISA</a><br><br>'
+    'Sources : <a href="https://euvd.enisa.europa.eu/" target=_blank>ENISA</a> | <a href="https://www.first.org/" target=_blank>FIRST</a> <br><br>'
     '<a href="https://github.com/JMousqueton/EUVD-Alert" class="btn btn-dark btn-sm" target="_blank" style="margin-top:8px;">'
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16" style="margin-right:6px;">'
     '<path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38 '
@@ -110,9 +114,9 @@ footer_html = (
 
 
 
-legend_html = (
+legend_Radar = (
     '<div class="mt-4 p-3 bg-light border rounded">'
-    '<h5><i class="fa-solid fa-circle-info"></i> CVSS Radar Legend</h5>'
+    '<h5><i class="fa-solid fa-circle-info"></i> CVSS Radar</h5>'
     '<ul class="small">'
     '<li><strong>AV</strong>: Attack Vector (Network, Adjacent, Local, Physical)</li>'
     '<li><strong>AC</strong>: Attack Complexity (Low, High)</li>'
@@ -152,9 +156,36 @@ def cvss_severity_icon(score):
     except:
         return '<span title="N/A">❓</span>'
 
-def_html = """
+
+def epss_icon(epss_score: float):
+    if epss_score >= 0.5:
+        return "🔴"
+    elif epss_score >= 0.1:
+        return "🟡"
+    else:
+        return "🔵"
+
+legend_EPSS = """
 <div class="mt-4 p-3 bg-light border rounded">
-  <h5><i class="fa-solid fa-circle-info"></i> CVSS Severity Legend</h5>
+  <h5><i class="fa-solid fa-circle-info"></i> CVSS risk</h5>
+  <ul class="small mb-0">
+    <li>{0} <strong>High</strong> (0.5 - 1)</li>
+    <li>{1} <strong>Medium</strong> (0.1 - 0.49)</li>
+    <li>{2} <strong>Low</strong> (0.0 – 0.09)</li>
+  </ul>
+  <div class="mt-3">
+    <span class="badge bg-danger">EXPL</span> Exploited in the wild
+</div>
+</div>
+""".format(
+    epss_icon(1),
+    epss_icon(0.2),
+    epss_icon(0),
+)
+
+legend_CVSS = """
+<div class="mt-4 p-3 bg-light border rounded">
+  <h5><i class="fa-solid fa-circle-info"></i> CVSS Severity</h5>
   <ul class="small mb-0">
     <li>{0} <strong>Critical</strong> (9.0 – 10.0)</li>
     <li>{1} <strong>High</strong> (7.0 – 8.9)</li>
@@ -171,6 +202,34 @@ def_html = """
     cvss_severity_icon(0)
 )
 
+
+legend_text = """
+    <div class="mt-4 p-3 bg-light shadow rounded">
+        <ul class="small mb-0">
+            <li><strong>CVSS</strong>: Common Vulnerability Scoring System</li>
+            <li><strong>EPSS</strong>: Exploit Prediction Scoring System</li>
+        </ul
+    </div>
+"""
+
+def get_epss(cve_id):
+    if FIRST_EPSS == "False":
+        return 0,""
+    try:
+        url = f"https://api.first.org/data/v1/epss?cve={cve_id}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "OK" and data.get("data"):
+            epss = float(data["data"][0]["epss"])
+            return epss_icon(epss), epss
+        else:
+            return "",0
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch EPSS for {cve_id}: {e}")
+        #return "0.00"
+        return "",0 
 
 def remove_duplicates_preserve_order(seq):
     return list(dict.fromkeys(seq))
@@ -229,7 +288,7 @@ def generate_inline_noinfo_svg():
     </svg>
     """
 
-def generate_summary_card(vulns,vendor_line):
+def generate_summary_card(vulns,vendor_line,type:"daily"):
     severity_counts = {"?": 0, "low": 0, "medium": 0, "high": 0, "critical": 0}
     vendor_counts = defaultdict(int)
     nb_vulns = len(vulns)
@@ -260,24 +319,108 @@ def generate_summary_card(vulns,vendor_line):
     f"{vendor.capitalize()} ({count})"
     for vendor, count in sorted(vendor_counts.items(), key=lambda x: x[0].capitalize())
     )
+    if type == "monthly":
+        first_day_of_this_month = now_local.replace(day=1)
+        last_month = first_day_of_this_month - timedelta(days=1)
+        today = f"{last_month.strftime("%Y-%m")}-pie"
 
     return f"""
     <div class="card border-primary mb-3">
-      <div class="card-header bg-primary text-white"><strong>🔎 &nbsp;Summary:</strong> {nb_vulns} vulnerabilities</div>
-      <div class="card-body">
-        <p class="card-text">
-            <strong>Severity breakdown:</strong><br>
-            <span title="Critical">{cvss_severity_icon(9.5)} {severity_counts['critical']}</span> &nbsp;
-            <span title="High">{cvss_severity_icon(8)} {severity_counts['high']}</span> &nbsp;
-            <span title="Medium">{cvss_severity_icon(5)} {severity_counts['medium']}</span> &nbsp;
-            <span title="Low">{cvss_severity_icon(2)} {severity_counts['low']}</span> &nbsp;
-            <span title="Unknown">{cvss_severity_icon(0)} {severity_counts['?']}</span>             
-        </p>
-        <p class="card-text"><strong>Filtered vendors:</strong><br> {vendor_line}</p>
-        <p class="card-text"><strong>Vulnerabilities by vendor:</strong><br> {vendor_list}</p>
-      </div>
+        <div class="card-header bg-primary text-white"><strong>🔎 &nbsp;Summary:</strong> {nb_vulns} vulnerabilities</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <p class="card-text mb-2">
+                        <strong>Severity breakdown:</strong><br>
+                        <span title="Critical">{cvss_severity_icon(9.5)} {severity_counts['critical']}</span> &nbsp;
+                        <span title="High">{cvss_severity_icon(8)} {severity_counts['high']}</span> &nbsp;
+                        <span title="Medium">{cvss_severity_icon(5)} {severity_counts['medium']}</span> &nbsp;
+                        <span title="Low">{cvss_severity_icon(2)} {severity_counts['low']}</span> &nbsp;
+                        <span title="Unknown">{cvss_severity_icon(0)} {severity_counts['?']}</span>             
+                    </p>
+                    <p></BR></p>
+                    <p class="card-text mb-2">
+                        <strong>Filtered vendors:</strong><br> {vendor_line}
+                    </p>
+                    <p class="card-text mb-0">
+                        <strong>Vendors with vulnerabilities:</strong><br> {vendor_list}
+                    </p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <img src="https://vuln.mousqueton.io/{type}/{today}.png"
+                        alt="Severity Breakdown Pie Chart"
+                        class="img-fluid rounded shadow-sm"
+                        style="max-width: 250px;">
+                </div>
+            </div>
+        </div>
     </div>
+
     """
+
+def categorize_severity(cvss):
+    if cvss is None:
+        return 'Unknown'
+    elif cvss >= 9.0:
+        return 'Critical'
+    elif cvss >= 7.0:
+        return 'High'
+    elif cvss >= 4.0:
+        return 'Medium'
+    elif cvss > 0.0:
+        return 'Low'
+    else:
+        return 'Unknown'
+
+def generate_piechart(vulns, type="daily"):
+
+    filtered = [v for v in vulns if v.get("baseScore") not in (None, 0)]
+    if type == "daily":
+        output_path = f"{DAILY_FOLDER}/{today}.png"
+    else:
+        output_path = f"{MONTHLY_FOLDER}/{type}-pie.png"
+    # If nothing to show, exit early
+    if not filtered:
+        logger.warning("📊 No data to plot severity pie chart.")
+        plt.figure(figsize=(6, 6))
+        plt.text(0.5, 0.5, 'No Data', fontsize=20, ha='center', va='center')
+        plt.axis('off')
+        plt.savefig(output_path, bbox_inches='tight')
+        plt.close()
+        return output_path
+
+        # Count severities
+    severity_counts = Counter(categorize_severity(v["baseScore"]) for v in filtered)
+
+    # Filter out zero values
+    categories = []
+    counts = []
+    colors = []
+
+    color_map = {
+        'Critical': 'red',
+        'High': 'orange',
+        'Medium': 'yellow',
+        'Low': 'green',
+        'Unknown': 'grey'
+    }
+    
+    for severity in ['Critical', 'High', 'Medium', 'Low', 'Unknown']:
+        count = severity_counts.get(severity, 0)
+        if count > 0:
+            categories.append(severity)
+            counts.append(count)
+            colors.append(color_map[severity])
+
+    # Plot the pie chart
+    plt.figure(figsize=(6, 6))
+    plt.pie(counts, labels=categories, colors=colors, autopct='%1.0f%%', startangle=140)
+    plt.title('Severity Breakdown')
+    plt.axis('equal')
+    plt.savefig(output_path, transparent=True, bbox_inches='tight')
+    plt.close()
+
+    return output_path
 
 def daily_report(vulns, vendor_line,title):
     html_path = f"./web/daily/{today}.html"
@@ -288,9 +431,13 @@ def daily_report(vulns, vendor_line,title):
     for v in vulns:
         #generate_radar_chart(v.get("baseScoreVector", ""), v["id"])
         alt_id = v.get('aliases', '').strip()
+        alias_list = v.get("aliases", "")
+        match = re.search(r"CVE-\d{4}-\d{1,5}", alias_list)
+        cve_alias = match.group(0) if match else ""
         score = v.get("baseScore", "N/A")
         icon = cvss_severity_icon(score)
-        exploited = "Yes" if v.get("exploited", False) else "No"
+        # exploited = "Yes" if v.get("exploited", False) else "No"
+        exploited = v.get("exploited", False)
         desc = v.get("description", "")[:200].replace("\n", " ") + "..."
         #product = ", ".join(p.get("product", {}).get("name", "n/a") for p in v.get("enisaIdProduct", []))
         product_names = [p.get("product", {}).get("name", "n/a") for p in v.get("enisaIdProduct", [])]
@@ -300,25 +447,27 @@ def daily_report(vulns, vendor_line,title):
         url = f"https://euvd.enisa.europa.eu/enisa/{v['id']}"
         vector = v.get("baseScoreVector", "")
         has_radar = bool(vector and "/" in vector)
-        if vendor_line:
-            vendor_html = (
-            f'<div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">'
-            f'Filtered on vendors: {vendor_line}'
-            f'</div>'
-            )
-        else:
-            vendor_html = ""
 
         if has_radar:
             generate_radar_chart(vector, v["id"], score)
             img_tag = f'<img src="{RADAR_URL}/{v["id"]}.png" class="img-fluid rounded shadow-sm" style="max-width: 150px;" alt="Radar">'
         else:
             img_tag = generate_inline_noinfo_svg()
+        epss_emoji, epss_value = get_epss(cve_alias)
         rows += f"""
             <tr>
-                <td><a href="{url}">{v['id']}</a><br><small>{alt_id}</small></td>
+                <td><a href="{url}">{v['id']}</a><!-- <br><small>{alt_id}</small> --></td>
                 <td data-sort="{score}">{icon} {score}</td>
-                <td>{exploited}</td>
+        """
+        if FIRST_EPSS:
+            rows += f"""
+                <td data_sort="{epss_value}"> &nbsp;&nbsp;{epss_emoji}
+            """
+            if exploited:
+                rows += '<br><span class="badge bg-danger ms-1" title="Exploited in the wild">EXPL</span>'
+            rows += '</td>'
+        rows += f"""
+                <!-- <td>{exploited}</td> --> 
                 <td>{vendor}</td>
                 <td>{product}</td>
                 <td>{desc}</td>
@@ -326,6 +475,7 @@ def daily_report(vulns, vendor_line,title):
             </tr>
         """
     report_url = f"{DAILY_URL}/{today}.html"
+    generate_piechart(vulns)
     html_content = f"""
         <html>
             <head>
@@ -339,18 +489,17 @@ def daily_report(vulns, vendor_line,title):
                 <meta property="og:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
                 <meta property="og:description" content="Daily breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
                 <meta property="og:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
-                <meta property="og:image:width" content="1200">
-                <meta property="og:image:height" content="630">
                 <meta property="og:url" content="https://vuln.mousqueton.io/daily/{today}.html">
                 <meta property="og:site_name" content="Julien Mousqueton">
-                <meta property="og:logo" content="https://vuln.mousqueton.io/assets/logo.png">
 
                 <!-- Twitter Card Meta -->
                 <meta name="twitter:card" content="summary_large_image">
                 <meta name="twitter:title" content="Daily Vulnerability Vendors Report - {formatted_date}">
                 <meta name="twitter:description" content="{nb_vulns} new vulnerabilities across {vendor_line}.">
                 <meta name="twitter:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
-                <meta name="twitter:site" content="Julien Mousqueton">
+                <meta name="twitter:site" content="@JMousqueton">
+                <meta name="twitter:creator" content="@JMousqueton">
+                <meta name="twitter:url" content="https://vuln.mousqueton.io/daily/{today}.html">
                 <title>{full_title}</title>
                 <!-- Bootstrap 5.3.3 -->
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -421,7 +570,7 @@ def daily_report(vulns, vendor_line,title):
                     <h2><i class="fa-regular fa-calendar-days"></i> {full_title}</h2>
                     <p>📄 <a href="{report_url}">View this report online</a></p>
                     <br>
-                    {generate_summary_card(vulns,vendor_line)}
+                    {generate_summary_card(vulns,vendor_line,"daily")}
                     <div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">
                         Page generated on {full_date}
                     </div>
@@ -430,7 +579,13 @@ def daily_report(vulns, vendor_line,title):
                             <tr>
                                 <th>ID</th>
                                 <th>CVSS</th>
-                                <th>Exploited</th>
+    """
+    if FIRST_EPSS:
+        html_content += f"""
+                <th>EPSS</th>
+        """
+    html_content += f"""
+                                <!-- <th>Exploited</th> --> 
                                 <th>Vendor</th>
                                 <th data-sort-method="none">Product</th>
                                 <th data-sort-method="none">Description</th>
@@ -451,22 +606,37 @@ def daily_report(vulns, vendor_line,title):
                             dom: 'Bfrtip',
                             buttons: ['excel'],
                             columnDefs: [
+    """
+    if FIRST_EPSS:
+        html_content += f"""
                                 {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
+        """
+    else:
+        html_content += f"""
+                                {{ orderable: false, targets: [4, 5] }}  // Disable Product and Description
+        """
+    html_content += f"""
                             ]
                             }});
                         }});
                     </script>
                     <div class="mt-4 p-3 bg-light border rounded">
-                        {vendor_html}
+                        <strong>Legend:</strong>
                         <div class="row">
-                            <div class="col-md-6">
-                                {legend_html}
+                            <div class="col-md-4">
+                                {legend_Radar}
                             </div>
-                            <div class="col-md-6">
-                                {def_html}
+                            <div class="col-md-4">
+                                {legend_CVSS}
                             </div>
+                            <div class="col-md-4">
+                                {legend_EPSS}
+                            </div>    
                         </div>
-                    </div>  
+                        <strong>Definition:</strong>
+                    {legend_text}
+                    <p></p>
+                    </div>  </div> 
                 {footer_html}
             </body>
         </html>
@@ -475,16 +645,6 @@ def daily_report(vulns, vendor_line,title):
         f.write(html_content)
     return html_content, html_path
 
-'''
-def load_json_file(path):
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return []
-'''
 def load_json_file(path):
     if not os.path.exists(path):
         logger.error(f"❌ File not found: {path}")
@@ -503,19 +663,37 @@ def load_json_file(path):
         logger.exception(f"❌ Unexpected error reading {path}: {e}")
         return []
 
+"""
+def matches_keyword(entry, keywords):
+    vendor_names = " ".join(
+        vn.get("vendor", {}).get("name", "") for vn in entry.get("enisaIdVendor", [])
+    ).lower()
+    positive = [k.lower() for k in keywords if not k.startswith("!")]
+    negative = [k[1:].lower() for k in keywords if k.startswith("!")]
+    if any(exclude in vendor_names for exclude in negative):
+        return False
+    return any(keyword in vendor_names for keyword in positive)
+
+def matches_keyword_all(entry, keywords):
+    text = (entry.get("id", "") + " " + entry.get("description", "") + " " + entry.get("aliases", "")).lower()
+    positive = [k.lower() for k in keywords if not k.startswith("!")]
+    negative = [k[1:].lower() for k in keywords if k.startswith("!")]
+    if any(exclude in text for exclude in negative):
+        return False
+    return any(keyword in text for keyword in positive)
+"""
+
 def matches_keyword(entry, keywords):
     """
     Checks if an entry matches the provided filters based on a manufacturer-product
     logic derived from the keywords list. For Manufacturer:Product filters,
     a match occurs if the manufacturer matches AND any of the specified products
     for that manufacturer match the entry's products. Returns 0 if not matched, 1 if matched.
-
     Args:
         entry: The entry data structure.
         keywords: A list of strings defining the filters.
                   Format: "Manufacturer", "Manufacturer:Product",
                           "!Manufacturer", "!Manufacturer:Product"
-
     Returns:
         1 if the entry matches at least one positive filter derived from
         keywords and none of the negative filters derived from keywords.
@@ -615,13 +793,7 @@ def matches_keyword(entry, keywords):
     return 0 # No match found
 
 
-def matches_keyword_all(entry, keywords):
-    text = (entry.get("id", "") + " " + entry.get("description", "") + " " + entry.get("aliases", "")).lower()
-    positive = [k.lower() for k in keywords if not k.startswith("!")]
-    negative = [k[1:].lower() for k in keywords if k.startswith("!")]
-    if any(exclude in text for exclude in negative):
-        return False
-    return any(keyword in text for keyword in positive)
+
 
 def filter_vulns(vulnerabilities, keywords, severity_filter=False):
     matches = []
@@ -779,13 +951,19 @@ def get_cvss_color(score):
         return "#999999"  # par défaut
 
 
-def alert(vulns, vendor_line,title):
+def alert(vulns, vendor_line, title):
     full_title = f"{title} - {formatted_date}"
     rows = ""
+    vendor_counter = Counter()
     for v in vulns:
+        alt_id = v.get('aliases', '').strip()
+        alias_list = v.get("aliases", "")
+        match = re.search(r"CVE-\d{4}-\d{1,5}", alias_list)
+        cve_alias = match.group(0) if match else ""
         score = v.get("baseScore", "N/A")
         icon = cvss_severity_icon(score)
-        exploited = "Yes" if v.get("exploited", False) else "No"
+
+        exploited = v.get("exploited", False)
         desc = v.get("description", "")[:200].replace("\n", " ") + "..."
         product_names = [p.get("product", {}).get("name", "n/a") for p in v.get("enisaIdProduct", [])]
         unique_product_names = remove_duplicates_preserve_order(product_names)
@@ -794,14 +972,13 @@ def alert(vulns, vendor_line,title):
         url = f"https://euvd.enisa.europa.eu/enisa/{v['id']}"
         vector = v.get("baseScoreVector", "")
         has_radar = bool(vector and "/" in vector)
-        if vendor_line:
-            vendor_html = (
-            f'<div style="text-align:center; font-size:0.8em; color:#777; padding-top:1em;">'
-            f'Filtered on vendors: {vendor_line}'
-            f'</div>'
-            )
-        else:
-            vendor_html = ""
+        epss_emoji, epss_value = get_epss(cve_alias)
+
+        for vn in v.get("enisaIdVendor", []):
+            vendor_name = vn.get("vendor", {}).get("name", "").strip()
+            if vendor_name:
+                vendor_counter[vendor_name] += 1
+
         if has_radar:
             generate_radar_chart(vector, v["id"], score)
             img_tag = f'<img src="{RADAR_URL}/{v["id"]}.png" class="img-fluid rounded shadow-sm" style="max-width: 150px;" alt="Radar">'
@@ -810,22 +987,86 @@ def alert(vulns, vendor_line,title):
         rows += f"""
             <tr>
                 <td><a href="{url}">{v['id']}</a><br><small>{v.get("aliases", "")}</small></td>
-                <td>{icon} {score}</td>
-                <td>{exploited}</td>
+                <td data_sort="{score}">{icon} {score}</td>
+        """
+        if FIRST_EPSS:
+            rows += f"""
+                <td data_sort="{epss_value}">{epss_emoji}
+            """
+            if exploited:
+                rows += '<br><span class="badge bg-danger ms-1" title="Exploited in the wild">EXPL</span>'
+            rows += '</td>'
+        rows += f"""
                 <td>{vendor}</td>
                 <td>{product}</td>
                 <td>{desc}</td>
                 <td>{img_tag}</td>
             </tr>
         """
+
+    match_vendor_line = ", ".join(f"{vendor} ({count})" for vendor, count in sorted(vendor_counter.items()))
+
+    timestamp = now_local.strftime("%Y-%m-%d-%H-%M")
+    report_url = f"{ALERTS_URL}/{timestamp}.html"    
     html_content = f"""
         <html>
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>{full_title}</title>
+                <link rel="icon" type="image/png" href="https://vuln.mousqueton.io/favicon.png">
+                <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
+                <!-- Open Graph Meta -->
+                <meta property="og:type" content="article">
+                <meta property="og:locale" content="en_US">
+                <meta property="og:title" content="Real-time Vulnerability Alert - {timestamp}">
+                <meta property="og:description" content="Real-time Vulnerability Alert based on {vendor_line}.">
+                <meta property="og:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
+                <meta property="og:url" content="https://vuln.mousqueton.io/alerts/{timestamp}.html">
+                <meta property="og:site_name" content="Julien Mousqueton">
+
+                <!-- Twitter Card Meta -->
+                <meta name="twitter:card" content="summary_large_image">
+                <meta name="twitter:title" content="Real-time Vulnerability Alert - {timestamp}">
+                <meta name="twitter:description" content="Real-time Vulnerability Alert based on {vendor_line}.">
+                <meta name="twitter:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
+                <meta name="twitter:site" content="@JMousqueton">
+                <meta name="twitter:creator" content="@JMousqueton">
+                <meta name="twitter:url" content="https://vuln.mousqueton.io/alerts/{timestamp}.html">
+                <title>🚨 Real-time Vulnerability Alert – {timestamp}</title>
+                <!-- Bootstrap 5.3.3 -->
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+                <!-- Font Awesome 6.5.0 -->
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+                <!-- DataTables + Bootstrap 5 -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+                <!-- Buttons (Bootstrap 5 style only) -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+
+                <!-- Responsive (Bootstrap 5 style) -->
+                <link rel="stylesheet" href="https://cdn.datatables.net/responsive/3.0.4/css/responsive.bootstrap5.min.css">
+
+                <!-- jQuery 3.7.1 -->
+                <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+                <!-- DataTables core + Bootstrap 5 -->
+                <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+                <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+                <!-- Buttons (copy + CSV only) -->
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+                <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+
+                <!-- Responsive -->
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/dataTables.responsive.min.js"></script>
+                <script src="https://cdn.datatables.net/responsive/3.0.4/js/responsive.bootstrap5.min.js"></script>
+
+                <!-- Dependencies for Excel -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
                 <style>
                     table {{
                         border-collapse: collapse;
@@ -838,23 +1079,49 @@ def alert(vulns, vendor_line,title):
                         vertical-align: top;
                     }}
                     th {{
-                        background-color: #f8d7da;
+                        background-color: #f2f2f2;
                         text-align: left;
                     }}
-                    h2 {{
-                        color: #b02a37;
+                    tr:hover {{background-color: #f5f5f5;}}
+
+
+                    .fa-icon::before {{
+                        content: attr(data-fallback);
+                        display: inline-block;
+                    }}
+
+                    .fa-icon.fas::before,
+                    .fa-icon.fa-solid::before {{
+                        content: "";
                     }}
                 </style>
             </head>
-            <body>
-                <h2>🚨 {full_title}</h2>
-                <p><strong>This is an automated alert for critical vulnerabilities.</strong></p>
-                <table id="alert-table" class="table table-bordered table-hover align-middle">
+        <body>
+            <div class="container mt-4">
+                <h2 class="text-danger">🚨 {full_title}</h2>
+                <p>📄 <a href="{report_url}">View this report online</a></p>
+                <br>
+                <div class="card border-primary mb-3">
+                    <div class="card-header bg-primary text-white"><strong>🔎 &nbsp;Information</strong></div>
+                        <div class="card-body">
+                            <p><strong>This is an automated alert for critical vulnerabilities.</strong></p>
+                            <p><strong>Minimum CVSS score: </strong><span class="badge bg-danger">{MIN_CVSS_TO_ALERT}</span></p>
+                            <p><strong>Filtered vendors: </strong>{vendor_line}</p>
+                            <p><strong>Matched vendors: </strong>{match_vendor_line}</p>
+                        </div>
+                    </div>
+              
+                <table id="vuln-table" class="table table-bordered table-hover align-middle">
                     <thead class="table-danger">
                         <tr>
                             <th>ID</th>
                             <th>CVSS</th>
-                            <th>Exploited</th>
+        """
+    if FIRST_EPSS:
+        html_content += f"""
+                            <th>EPSS</th>
+        """
+    html_content += f"""
                             <th>Vendor</th>
                             <th>Product</th>
                             <th>Description</th>
@@ -865,14 +1132,58 @@ def alert(vulns, vendor_line,title):
                         {rows}
                     </tbody>
                 </table>
+                <script>
+                        $(document).ready(function () {{
+                            $('#vuln-table').DataTable({{
+                            pageLength: 25,
+                            lengthMenu: [10, 25, 50, 100],
+                            order: [],
+                            responsive: true,
+                            dom: 'Bfrtip',
+                            buttons: ['excel'],
+                            columnDefs: [
+    """
+    if FIRST_EPSS:
+        html_content += f"""
+                                {{ orderable: false, targets: [4, 5, 6] }}  // Disable Product, Description, and Radar
+        """
+    else:
+        html_content += f"""
+                                {{ orderable: false, targets: [4, 5] }}  // Disable Product and Description
+        """
+    html_content += f"""
+                            ]
+                            }});
+                        }});
+                    </script>
                 <div class="mt-4 p-3 bg-light border rounded">
-                    {vendor_html}
-                    {legend_html}
-                </div>
+                        <strong>Legend:</strong>
+                        <div class="row">
+                            <div class="col-md-4">
+                                {legend_Radar}
+                            </div>
+                            <div class="col-md-4">
+                                {legend_CVSS}
+                            </div>
+                            <div class="col-md-4">
+                                {legend_EPSS}
+                            </div>    
+                        </div>
+                        <strong>Definition:</strong>
+                    {legend_text}
+                    <p></p>
+                    </div>  </div>
                     {footer_html}
+                </div>
             </body>
         </html>
     """
+    # Save the HTML content to ./web/alert/
+    alert_path = f"{ALERTS_FOLDER}/{timestamp}.html"
+    os.makedirs(os.path.dirname(alert_path), exist_ok=True)
+    with open(alert_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    logger.info(f"📁 Alert HTML page saved to {alert_path}")
     return html_content
 
 def generate_vuln_bar_chart(vulns, month_year, output_dir=MONTHLY_FOLDER):
@@ -939,7 +1250,7 @@ def generate_vuln_bar_chart(vulns, month_year, output_dir=MONTHLY_FOLDER):
         bottom = [bottom[i] + severity_data[sev][i] for i in range(len(all_days))]
 
     ax.set_title(f"Cumulative vulnerabilities per day for selected vendors in {month_year_str}", fontsize=14)
-    ax.set_xlabel("Date")
+    ax.set_xlabel("Date\n(c) Julien Mousqueton")
     ax.set_ylabel("Number of vulnerabilities")
     ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
     ax.yaxis.grid(True, linestyle='--', linewidth=0.5, color='lightgray')
@@ -1001,8 +1312,18 @@ def monthly_summary(vulns, keywords, month_year):
     html_path = f"{MONTHLY_FOLDER}/{month_id}.html"
     report_url = f"{MONTHLY_URL}/{month_id}.html"
 
-    vendor_line = ", ".join(sorted(keywords))
+    ###vendor_line = ", ".join(sorted(keywords))
+    # Filter and extract vendor names
+    vendor_names = {
+            entry.split(":")[0].strip()
+            for entry in keywords
+            if not entry.startswith("!")
+    }
 
+    # Sort and join
+    vendor_line = ", ".join(sorted(vendor_names))
+
+    generate_piechart(vulns,month_id)
     html_content = f"""
         <html>
             <head>
@@ -1016,18 +1337,17 @@ def monthly_summary(vulns, keywords, month_year):
                 <meta property="og:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
                 <meta property="og:description" content="Monthly breakdown of {nb_vulns} vulnerabilities affecting these vendors {vendor_line}.">
                 <meta property="og:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
-                <meta property="og:image:width" content="1200">
-                <meta property="og:image:height" content="630">
-                <meta property="og:url" content="https://vuln.mousqueton.io/monthly/{month_year}.html">
+                <meta property="og:url" content="https://vuln.mousqueton.io/monthly/{month_id}.html">
                 <meta property="og:site_name" content="Julien Mousqueton">
-                <meta property="og:logo" content="https://vuln.mousqueton.io/assets/logo.png">
 
                 <!-- Twitter Card Meta -->
                 <meta name="twitter:card" content="summary_large_image">
                 <meta name="twitter:title" content="Monthly Vulnerability Vendors Summarize - {month_year}">
                 <meta name="twitter:description" content="In {month_year}, {nb_vulns} new vulnerabilities across {vendor_line}.">
                 <meta name="twitter:image" content="https://vuln.mousqueton.io/assets/daily-preview.png">
-                <meta name="twitter:site" content="Julien Mousqueton">
+                <meta name="twitter:site" content="@JMousqueton">
+                <meta name="twitter:creator" content="@JMousqueton">
+                <meta name="twitter:url" content="https://vuln.mousqueton.io/monthly/{month_id}.html">
                 <title>Monthly Vulnerability Summary – {month_year}</title>
                 <!-- Bootstrap 5.3.3 -->
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -1097,7 +1417,7 @@ def monthly_summary(vulns, keywords, month_year):
                 <h2>📊 Monthly Vulnerability Summary – {month_year}</h2>
                 <p>📄 <a href="{report_url}">View this report online</a></p>
                 <br>
-                {generate_summary_card(vulns,vendor_line)}
+                {generate_summary_card(vulns,vendor_line,type="monthly")}
                 <br>
                 <p>Summary of vulnerabilities by vendor and severity level.</p>
                 <table id="vuln-table" class="table table-bordered table-hover align-middle">
@@ -1134,7 +1454,7 @@ def monthly_summary(vulns, keywords, month_year):
     
     <img src="{MONTHLY_URL}/{month_id}.png" alt="Cumulative Vulnerabilities per Day for selected vendors for {month_year}" class="img-fluid rounded shadow">
 </div>
-                {def_html}
+                {legend_CVSS}
             </div>
             {footer_html}
             </body>
@@ -1188,7 +1508,8 @@ def main():
         formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        logger.info(f"🚀 Running script: {os.path.abspath(sys.argv[0])}")
+        logger.info("-"*40)
+        logger.info(f"🚀 Running script: {os.path.abspath(sys.argv[0])} with args: {' '.join(sys.argv[1:])}")
         logger.info(f"📂 File logging enabled: {LOG_FILE_PATH}")
     elif args.log:
         logger.warning("⚠️ --log flag used but LOG_FILE is not set in .env")
@@ -1223,7 +1544,20 @@ def main():
     if not vulnerabilities or not keywords:
         logger.info("Nothing to process.")
         return
-    vendor_line = ", ".join(sorted(keywords))
+
+    # Filter and extract vendor names
+    vendor_names = {
+            entry.split(":")[0].strip()
+            for entry in keywords
+            if not entry.startswith("!")
+    }
+
+    # Sort and join
+    vendor_line = ", ".join(sorted(vendor_names))
+
+
+
+    #vendor_line = ", ".join(sorted(keywords))
     logger.info(f"🔍 Filtering vulnerabilities for vendors: {vendor_line}")
     if is_daily:
         sent_ids = load_sent_ids(SENT_IDS_DAILY_FILE)

@@ -62,7 +62,7 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "90"))
 with open(LOCK_FILE, "w") as lock_file:
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        logger.debug("🔒 Lock acquired successfully.")
+        logger.info("🔒 Lock acquired successfully.")
     except BlockingIOError:
         logger.info("🚫 Another instance is already running. Exiting.")
         sys.exit(1)
@@ -145,7 +145,7 @@ with open(LOCK_FILE, "w") as lock_file:
                 updated_ids.append(entry_id)
                 updated_count += 1
 
-    logger.info(f"➕ Added: {added_count}")
+    logger.info(f"📝 Added: {added_count}")
     logger.info(f"🔁 Updated: {updated_count}")
 
     # Update sent_ids files
@@ -186,6 +186,6 @@ with open(LOCK_FILE, "w") as lock_file:
     finally:
         try:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
-            logger.debug("🔓 Lock released.")
+            logger.info("🔓 Lock released.")
         except Exception as e:
             logger.warning(f"⚠️ Failed to release lock: {e}")

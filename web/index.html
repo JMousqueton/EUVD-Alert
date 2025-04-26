@@ -8,8 +8,14 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="https://vuln.mousqueton.io/favicon.png">
+  <link rel="icon" type="image/svg+xml" href="https://vuln.mousqueton.io/favicon.svg" />
   <link rel="shortcut icon" href="https://vuln.mousqueton.io/favicon.ico">
   <link rel="apple-touch-icon" href="https://vuln.mousqueton.io/favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://vuln.mousqueton.io/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="https://vuln.mousqueton.io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="https://vuln.mousqueton.io/favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://vuln.mousqueton.io/favicon-16x16.png">
+  <link rel="manifest" href="/site.webmanifest">
 
   <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
 
@@ -168,8 +174,9 @@
     </section>
 
     <section class="mb-5 text-center">
-      <h2 class="section-title text-primary">Example of realtime notification of alerts</h2>
+      <h2 class="section-title text-primary">Example of realtime alert notification by email</h2>
       <img src="https://vuln.mousqueton.io/assets/screenshot.png" alt="Sample Report" class="img-fluid rounded shadow border">
+      <small>Source: <a href="https://vuln.mousqueton.io/alerts/2025-04-21-18-13.html" target="_blank">https://vuln.mousqueton.io/alerts/2025-04-21-18-13.html</a></small>
     </section>
 
     <section class="mb-5">
@@ -186,7 +193,7 @@
         </p>
       </div>
     
-      <div class="mt-4">
+      <div class="mt-3">
         <h3 class="h3 text-primary fw-normal">Monthly report</h3>
         <p>
           The monthly report aggregates all vulnerabilities across the month and displays a matrix of vendors vs. CVSS severity levels.
@@ -199,15 +206,21 @@
     </section>
 
     <section class="mb-5">
-        <h2 class="section-title text-primary">Powered by ENISA Vulnerability Database</h2>
-        <p>
-          EUVD-Alert leverages the official 
-          <a href="https://euvd.enisa.europa.eu/" target="_blank" class="link-primary text-decoration-underline">ENISA Vulnerability Database</a> 
-          as its primary data source. This ensures that the reported vulnerabilities are up-to-date, relevant, and aligned with European cybersecurity standards.
-        </p>
-        <p>
-          By integrating ENISA's trusted feed with custom filtering and alerting logic, EUVD-Alert helps you react faster to threats that matter in your specific context.
-        </p>
+        <h2 class="section-title text-primary">Sources</h2>
+        <div class="mt-3">
+          <h3 class="h3 text-primary fw-normal">ENISA: Vulnerability Database</h3>
+          <p> 
+            <a href="https://euvd.enisa.europa.eu/" target="_blank" class="link-primary text-decoration-underline">ENISA Vulnerability Database</a> 
+            is our primary data source. This ensures that the reported vulnerabilities are up-to-date, relevant, and aligned with European cybersecurity standards.
+          </p>
+        </div>
+        <div class="mt-3">
+          <h3 class="h3 text-primary fw-normal">FIRST: Exploit Prediction Scoring System</h3>
+          <p>This site uses data from the <a href="https://www.first.org/epss/" target="_blank" rel="noopener">Exploit Prediction Scoring System (EPSS)</a> 
+            by FIRST.org, which estimates the likelihood a vulnerability will be exploited in the wild.<br>
+            EPSS helps prioritize vulnerabilities based on real-world risk, not just severity.
+          </p>
+        </div>
       </section>
       
 
