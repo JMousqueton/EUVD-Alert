@@ -504,14 +504,116 @@ def load_json_file(path):
         return []
 
 def matches_keyword(entry, keywords):
-    vendor_names = " ".join(
-        vn.get("vendor", {}).get("name", "") for vn in entry.get("enisaIdVendor", [])
-    ).lower()
-    positive = [k.lower() for k in keywords if not k.startswith("!")]
-    negative = [k[1:].lower() for k in keywords if k.startswith("!")]
-    if any(exclude in vendor_names for exclude in negative):
-        return False
-    return any(keyword in vendor_names for keyword in positive)
+    """
+    Checks if an entry matches the provided filters based on a manufacturer-product
+    logic derived from the keywords list. For Manufacturer:Product filters,
+    a match occurs if the manufacturer matches AND any of the specified products
+    for that manufacturer match the entry's products. Returns 0 if not matched, 1 if matched.
+
+    Args:
+        entry: The entry data structure.
+        keywords: A list of strings defining the filters.
+                  Format: "Manufacturer", "Manufacturer:Product",
+                          "!Manufacturer", "!Manufacturer:Product"
+
+    Returns:
+        1 if the entry matches at least one positive filter derived from
+        keywords and none of the negative filters derived from keywords.
+        0 otherwise.
+    """
+    # --- Extract and normalize vendor and product names from the entry ---
+    product_names_lower = " ".join([
+        item.get('product', {}).get('name', '')
+        for item in entry.get("enisaIdProduct", []) if item
+    ]).lower()
+
+    vendor_names_lower = ", ".join([
+        vn.get("vendor", {}).get("name", "")
+        for vn in entry.get("enisaIdVendor", []) if vn
+    ]).lower()
+
+    # --- Parse keywords to build the filter structures ---
+    # Positive filters
+    positive_manufacturer_only_filters = set() # Manufacturers where any product matches
+    positive_manufacturer_product_filters = {} # {manufacturer: [product1, product2, ...]} for specific products
+
+    # Negative filters
+    negative_manufacturers = set() # Manufacturers to exclude entirely
+    negative_manufacturer_products_set = set() # {(manufacturer, product), ...} specific combos to exclude
+
+    for filter_str in keywords:
+        if not isinstance(filter_str, str):
+             continue
+
+        filter_str = filter_str.strip()
+        if not filter_str:
+            continue
+
+        is_negative = filter_str.startswith("!")
+        if is_negative:
+            filter_str = filter_str[1:].strip()
+            if not filter_str:
+                 continue
+
+        parts = filter_str.split(":", 1)
+        manufacturer = parts[0].strip()
+
+        if not manufacturer:
+            continue
+
+        if len(parts) == 2:
+            # Manufacturer:Product filter
+            product = parts[1].strip()
+            if not product:
+                # Manufacturer only (ends with ':') - Treat as Manufacturer-only filter type
+                if is_negative:
+                    negative_manufacturers.add(manufacturer.lower()) # Store negative manufacturers lowercase
+                else:
+                    positive_manufacturer_only_filters.add(manufacturer.lower()) # Store positive any-product manufacturers lowercase
+            else:
+                # Valid Manufacturer:Product filter
+                if is_negative:
+                    negative_manufacturer_products_set.add((manufacturer.lower(), product.lower())) # Store negative combos lowercase
+                else:
+                    # Store positive manufacturer-product filters. Use lower case for keys/values here
+                    positive_manufacturer_product_filters.setdefault(manufacturer.lower(), []).append(product.lower())
+        else:
+            # Manufacturer-only filter (no ':')
+            if is_negative:
+                negative_manufacturers.add(manufacturer.lower()) # Store negative manufacturers lowercase
+            else:
+                positive_manufacturer_only_filters.add(manufacturer.lower()) # Store positive any-product manufacturers lowercase
+
+    # --- Apply Negative Filters ---
+
+    # Negative Manufacturers: Check if any excluded manufacturer is in the entry's vendor names
+    for nm_lower in negative_manufacturers:
+        if nm_lower in vendor_names_lower:
+            return 0 # Excluded by manufacturer
+
+    # Negative Manufacturer-Product Pairs: Check if any excluded combo is in the entry
+    for nmp_mf_lower, nmp_prod_lower in negative_manufacturer_products_set:
+        if nmp_mf_lower in vendor_names_lower and nmp_prod_lower in product_names_lower:
+             return 0 # Excluded by manufacturer:product combo
+
+    # --- Apply Positive Filters ---
+
+    # 1. Check Positive Manufacturer-Only Filters (match any product)
+    for pm_lower in positive_manufacturer_only_filters:
+        if pm_lower in vendor_names_lower:
+            return 1 # Matched a manufacturer requesting any product
+
+    # 2. Check Positive Manufacturer-Product Filters (match at least one specified product)
+    for pmp_mf_lower, required_products_lower_list in positive_manufacturer_product_filters.items():
+        if pmp_mf_lower in vendor_names_lower:
+            # Manufacturer matches, now check if ANY of the required products match
+            for required_prod_lower in required_products_lower_list:
+                if required_prod_lower in product_names_lower:
+                    return 1 # Matched manufacturer AND one of the specified products
+
+    # --- If no positive filter matched after checking all ---
+    return 0 # No match found
+
 
 def matches_keyword_all(entry, keywords):
     text = (entry.get("id", "") + " " + entry.get("description", "") + " " + entry.get("aliases", "")).lower()
