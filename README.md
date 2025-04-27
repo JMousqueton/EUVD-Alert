@@ -84,6 +84,12 @@ Julien Mousqueton
 [LinkedIn](https://linkedin.com/in/julienmousqueton)  
 GitHub: [JMousqueton](https://github.com/JMousqueton)
 
+## Contributors
+
+Thanks to all the project contributors
+
+- [Ralle12345](https://github.com/ralle12345/) for the filter on vendors and products
+
 ## 🛡 License
 
 This project is licensed under the GNU General Public License v3.0.
