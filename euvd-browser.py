@@ -24,7 +24,7 @@ if not os.path.exists(DB_FILE):
 
 def show_help_popup(stdscr):
     h, w = stdscr.getmaxyx()
-    popup_h = 20
+    popup_h = 22
     popup_w = 70
     start_y = (h - popup_h) // 2
     start_x = (w - popup_w) // 2
