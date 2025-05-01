@@ -19,6 +19,10 @@ import fcntl
 from collections import defaultdict, Counter
 import re
 import math
+import time 
+
+# Load environment variables from .env
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(
@@ -40,8 +44,6 @@ lock_file = open(lock_file_path, "w")
 # Choose your timezone (e.g., Europe/Paris or US/Eastern)
 timezone = pytz.timezone("Europe/Paris")
 
-# Load environment variables from .env
-load_dotenv()
 
 ## Define now()
 # Get the current date and time
@@ -226,10 +228,32 @@ def get_epss(cve_id):
             return epss_icon(epss), epss
         else:
             return "",0
+
+        # Sleep 0.5 second after successful query to be gentle
+        time.sleep(0.5)     
+
     except Exception as e:
         logger.warning(f"⚠️ Failed to fetch EPSS for {cve_id}: {e}")
         #return "0.00"
         return "",0 
+
+
+
+### For Future use 
+def load_cisa_kev():
+    CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    try:
+        response = requests.get(CISA_KEV_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        kev_cves = {entry["cveID"] for entry in data.get("vulnerabilities", [])}
+        logger.info(f"✅ Loaded {len(kev_cves)} CVEs from CISA KEV.")
+        return kev_cves
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to load CISA KEV: {e}")
+        return set()
+### 
+
 
 def remove_duplicates_preserve_order(seq):
     return list(dict.fromkeys(seq))
@@ -461,7 +485,7 @@ def daily_report(vulns, vendor_line,title):
         """
         if FIRST_EPSS:
             rows += f"""
-                <td data_sort="{epss_value}"> &nbsp;&nbsp;{epss_emoji}
+                <td data-sort="{epss_value}"> &nbsp;&nbsp;{epss_emoji}
             """
             if exploited:
                 rows += '<br><span class="badge bg-danger ms-1" title="Exploited in the wild">EXPL</span>'
@@ -987,7 +1011,7 @@ def alert(vulns, vendor_line, title):
         rows += f"""
             <tr>
                 <td><a href="{url}">{v['id']}</a><br><small>{v.get("aliases", "")}</small></td>
-                <td data_sort="{score}">{icon} {score}</td>
+                <td data-sort="{score}">{icon} {score}</td>
         """
         if FIRST_EPSS:
             rows += f"""
@@ -1272,7 +1296,12 @@ def monthly_summary(vulns, keywords, month_year):
     month_year_filename = parsed_date.strftime("%Y-%m")
     generate_vuln_bar_chart(vulns,month_year_filename)
     severity_levels = ["critical", "high", "medium", "low", "?"]
-    vendor_severity = {k: {s: 0 for s in severity_levels} for k in sorted(keywords)}
+    vendor_names = {
+        kw.split(":")[0].strip()
+        for kw in keywords
+        if not kw.startswith("!")
+    }
+    vendor_severity = {vendor: {s: 0 for s in severity_levels} for vendor in sorted(vendor_names)}
     nb_vulns = len(vulns)
     for v in vulns:
         vendor_names = [vn.get("vendor", {}).get("name", "").strip() for vn in v.get("enisaIdVendor", [])]
@@ -1290,30 +1319,28 @@ def monthly_summary(vulns, keywords, month_year):
             severity = "high"
         else:
             severity = "critical"
-
-        for vendor in vendor_names:
-            for keyword in keywords:
-                if keyword.lower() in vendor.lower():
-                    vendor_severity[keyword][severity] += 1
-    rows = ""
-    for vendor, counts in vendor_severity.items():
-        total = sum(counts.values())
-        if total == 0:
-            rows += f"<tr><th class='text-muted' style='text-decoration: line-through;'>{vendor}</th>"
-        else:
-            rows += f"<tr><th>{vendor}</th>"
-        for sev in severity_levels:
-            if counts[sev] != 0:
-                rows += f'<td data-sort="{counts[sev]}"><strong>{counts[sev]}</strong></td>'
+        for kw in keywords:
+            if matches_keyword(v, [kw]):
+                vendor = kw.split(":")[0].strip()
+                vendor_severity[vendor][severity] += 1
+        rows = ""
+        for vendor, counts in vendor_severity.items():
+            total = sum(counts.values())
+            if total == 0:
+                rows += f"<tr><th class='text-muted' style='text-decoration: line-through;'>{vendor}</th>"
             else:
-                rows += f'<td data-sort="0">0</td>'
-        rows += "</tr>"
+                rows += f"<tr><th>{vendor}</th>"
+            for sev in severity_levels:
+                if counts[sev] != 0:
+                    rows += f'<td data-sort="{counts[sev]}"><strong>{counts[sev]}</strong></td>'
+                else:
+                    rows += f'<td data-sort="0">0</td>'
+            rows += "</tr>"
     month_id = datetime.strptime(month_year, "%B %Y").strftime("%Y-%m")
     html_path = f"{MONTHLY_FOLDER}/{month_id}.html"
     report_url = f"{MONTHLY_URL}/{month_id}.html"
 
-    ###vendor_line = ", ".join(sorted(keywords))
-    # Filter and extract vendor names
+
     vendor_names = {
             entry.split(":")[0].strip()
             for entry in keywords
