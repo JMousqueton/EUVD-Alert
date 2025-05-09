@@ -346,7 +346,7 @@ def generate_summary_card(vulns,vendor_line,type:"daily"):
     if type == "monthly":
         first_day_of_this_month = now_local.replace(day=1)
         last_month = first_day_of_this_month - timedelta(days=1)
-        today = f"{last_month.strftime("%Y-%m")}-pie"
+        today = f"{last_month.strftime('%Y-%m')}-pie"
     else:
         today = now_local.strftime("%Y-%m-%d")
 
