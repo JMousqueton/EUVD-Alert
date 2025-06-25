@@ -95,7 +95,7 @@ with open(LOCK_FILE, "w") as lock_file:
 
     while True:
         url = (
-            "https://euvdservices.enisa.europa.eu/api/vulnerabilities"
+            "https://euvdservices.enisa.europa.eu/api/search"
             f"?fromDate={from_date}&toDate={to_date}&page={page}&size={page_size}"
         )
 
